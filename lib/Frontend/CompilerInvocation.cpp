@@ -147,7 +147,7 @@ static void AnalyzerOptsToArgs(const AnalyzerOptions &Opts, ToArgsList &Res) {
                   getAnalysisPurgeModeName(Opts.AnalysisPurgeOpt));
   if (!Opts.AnalyzeSpecificFunction.empty())
     Res.push_back("-analyze-function", Opts.AnalyzeSpecificFunction);
-  if (Opts.IPAMode != Inlining)
+  if (Opts.IPAMode != BasicInlining)
     Res.push_back("-analyzer-ipa", getAnalysisIPAModeName(Opts.IPAMode));
   if (Opts.InliningMode != NoRedundancy)
     Res.push_back("-analyzer-inlining-mode",
@@ -812,7 +812,7 @@ static void LangOptsToArgs(const LangOptions &Opts, ToArgsList &Res) {
   Res.push_back("-fobjc-runtime=" + Opts.ObjCRuntime.getAsString());
   if (Opts.ObjCAutoRefCount)
     Res.push_back("-fobjc-arc");
-  if (Opts.ObjCRuntimeHasWeak)
+  if (Opts.ObjCARCWeak)
     Res.push_back("-fobjc-runtime-has-weak");
   if (!Opts.ObjCInferRelatedResultType)
     Res.push_back("-fno-objc-infer-related-result-type");
@@ -1267,6 +1267,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.CoverageFile = Args.getLastArgValue(OPT_coverage_file);
   Opts.DebugCompilationDir = Args.getLastArgValue(OPT_fdebug_compilation_dir);
   Opts.LinkBitcodeFile = Args.getLastArgValue(OPT_mlink_bitcode_file);
+  Opts.SSPBufferSize =
+    Args.getLastArgIntValue(OPT_stack_protector_buffer_size, 8, Diags);
   Opts.StackRealignment = Args.hasArg(OPT_mstackrealign);
   if (Arg *A = Args.getLastArg(OPT_mstack_alignment)) {
     StringRef Val = A->getValue(Args);
@@ -1941,13 +1943,15 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Opts.setGC(LangOptions::HybridGC);
     else if (Args.hasArg(OPT_fobjc_arc)) {
       Opts.ObjCAutoRefCount = 1;
-      if (!Opts.ObjCRuntime.isNonFragile())
-        Diags.Report(diag::err_arc_nonfragile_abi);
-    }
+      if (!Opts.ObjCRuntime.allowsARC())
+        Diags.Report(diag::err_arc_unsupported_on_runtime);
 
-    Opts.ObjCRuntimeHasWeak = Opts.ObjCRuntime.hasWeak();
-    if (Args.hasArg(OPT_fobjc_runtime_has_weak))
-      Opts.ObjCRuntimeHasWeak = 1;
+      // Only set ObjCARCWeak if ARC is enabled.
+      if (Args.hasArg(OPT_fobjc_runtime_has_weak))
+        Opts.ObjCARCWeak = 1;
+      else
+        Opts.ObjCARCWeak = Opts.ObjCRuntime.allowsWeak();
+    }
 
     if (Args.hasArg(OPT_fno_objc_infer_related_result_type))
       Opts.ObjCInferRelatedResultType = 0;

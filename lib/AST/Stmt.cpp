@@ -548,6 +548,17 @@ unsigned AsmStmt::AnalyzeAsmString(SmallVectorImpl<AsmStringPiece>&Pieces,
   }
 }
 
+Expr *MSAsmStmt::getOutputExpr(unsigned i) {
+  return cast<Expr>(Exprs[i]);
+}
+
+Expr *MSAsmStmt::getInputExpr(unsigned i) {
+  return cast<Expr>(Exprs[i + NumOutputs]);
+}
+void MSAsmStmt::setInputExpr(unsigned i, Expr *E) {
+  Exprs[i + NumOutputs] = E;
+}
+
 QualType CXXCatchStmt::getCaughtType() const {
   if (ExceptionDecl)
     return ExceptionDecl->getType();
@@ -559,14 +570,13 @@ QualType CXXCatchStmt::getCaughtType() const {
 //===----------------------------------------------------------------------===//
 
 AsmStmt::AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple,
-                 bool isvolatile, bool msasm,
-                 unsigned numoutputs, unsigned numinputs,
+                 bool isvolatile, unsigned numoutputs, unsigned numinputs,
                  IdentifierInfo **names, StringLiteral **constraints,
                  Expr **exprs, StringLiteral *asmstr, unsigned numclobbers,
                  StringLiteral **clobbers, SourceLocation rparenloc)
   : Stmt(AsmStmtClass), AsmLoc(asmloc), RParenLoc(rparenloc), AsmStr(asmstr)
-  , IsSimple(issimple), IsVolatile(isvolatile), MSAsm(msasm)
-  , NumOutputs(numoutputs), NumInputs(numinputs), NumClobbers(numclobbers) {
+  , IsSimple(issimple), IsVolatile(isvolatile), NumOutputs(numoutputs)
+  , NumInputs(numinputs), NumClobbers(numclobbers) {
 
   unsigned NumExprs = NumOutputs + NumInputs;
 
@@ -586,12 +596,16 @@ AsmStmt::AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple,
 MSAsmStmt::MSAsmStmt(ASTContext &C, SourceLocation asmloc,
                      SourceLocation lbraceloc, bool issimple, bool isvolatile,
                      ArrayRef<Token> asmtoks, ArrayRef<IdentifierInfo*> inputs,
-                     ArrayRef<IdentifierInfo*> outputs, StringRef asmstr,
-                     ArrayRef<StringRef> clobbers, SourceLocation endloc)
+                     ArrayRef<IdentifierInfo*> outputs,
+                     ArrayRef<Expr*> inputexprs, ArrayRef<Expr*> outputexprs,
+                     StringRef asmstr, ArrayRef<StringRef> clobbers,
+                     SourceLocation endloc)
   : Stmt(MSAsmStmtClass), AsmLoc(asmloc), LBraceLoc(lbraceloc), EndLoc(endloc),
     AsmStr(asmstr.str()), IsSimple(issimple), IsVolatile(isvolatile),
     NumAsmToks(asmtoks.size()), NumInputs(inputs.size()),
     NumOutputs(outputs.size()), NumClobbers(clobbers.size()) {
+  assert (inputs.size() == inputexprs.size() && "Input expr size mismatch!");
+  assert (outputs.size() == outputexprs.size() && "Input expr size mismatch!");
 
   unsigned NumExprs = NumOutputs + NumInputs;
 
@@ -600,6 +614,12 @@ MSAsmStmt::MSAsmStmt(ASTContext &C, SourceLocation asmloc,
     Names[i] = outputs[i];
   for (unsigned i = NumOutputs, e = NumExprs; i != e; ++i)
     Names[i] = inputs[i];
+
+  Exprs = new (C) Stmt*[NumExprs];
+  for (unsigned i = 0, e = NumOutputs; i != e; ++i)
+    Exprs[i] = outputexprs[i];
+  for (unsigned i = NumOutputs, e = NumExprs; i != e; ++i)
+    Exprs[i] = inputexprs[i];
 
   AsmToks = new (C) Token[NumAsmToks];
   for (unsigned i = 0, e = NumAsmToks; i != e; ++i)

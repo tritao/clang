@@ -424,12 +424,12 @@ public:
 
   /// \brief Produce a unique representation of the given statement.
   ///
-  /// \brief ID once the profiling operation is complete, will contain
+  /// \param ID once the profiling operation is complete, will contain
   /// the unique representation of the given statement.
   ///
-  /// \brief Context the AST context in which the statement resides
+  /// \param Context the AST context in which the statement resides
   ///
-  /// \brief Canonical whether the profile should be based on the canonical
+  /// \param Canonical whether the profile should be based on the canonical
   /// representation of this statement (e.g., where non-type template
   /// parameters are identified by index/level rather than their
   /// declaration pointers) or the exact representation of the statement as
@@ -1371,7 +1371,6 @@ class AsmStmt : public Stmt {
 
   bool IsSimple;
   bool IsVolatile;
-  bool MSAsm;
 
   unsigned NumOutputs;
   unsigned NumInputs;
@@ -1385,10 +1384,10 @@ class AsmStmt : public Stmt {
 
 public:
   AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple, bool isvolatile,
-          bool msasm, unsigned numoutputs, unsigned numinputs,
-          IdentifierInfo **names, StringLiteral **constraints,
-          Expr **exprs, StringLiteral *asmstr, unsigned numclobbers,
-          StringLiteral **clobbers, SourceLocation rparenloc);
+          unsigned numoutputs, unsigned numinputs, IdentifierInfo **names,
+          StringLiteral **constraints, Expr **exprs, StringLiteral *asmstr,
+          unsigned numclobbers, StringLiteral **clobbers,
+          SourceLocation rparenloc);
 
   /// \brief Build an empty inline-assembly statement.
   explicit AsmStmt(EmptyShell Empty) : Stmt(AsmStmtClass, Empty),
@@ -1403,8 +1402,6 @@ public:
   void setVolatile(bool V) { IsVolatile = V; }
   bool isSimple() const { return IsSimple; }
   void setSimple(bool V) { IsSimple = V; }
-  bool isMSAsm() const { return MSAsm; }
-  void setMSAsm(bool V) { MSAsm = V; }
 
   //===--- Asm String Analysis ---===//
 
@@ -1634,6 +1631,7 @@ public:
   MSAsmStmt(ASTContext &C, SourceLocation asmloc, SourceLocation lbraceloc,
             bool issimple, bool isvolatile, ArrayRef<Token> asmtoks,
             ArrayRef<IdentifierInfo*> inputs, ArrayRef<IdentifierInfo*> outputs,
+            ArrayRef<Expr*> inputexprs, ArrayRef<Expr*> outputexprs,
             StringRef asmstr, ArrayRef<StringRef> clobbers,
             SourceLocation endloc);
 
@@ -1659,6 +1657,49 @@ public:
   const std::string *getAsmString() const { return &AsmStr; }
   std::string *getAsmString() { return &AsmStr; }
   void setAsmString(StringRef &E) { AsmStr = E.str(); }
+
+  //===--- Output operands ---===//
+
+  unsigned getNumOutputs() const { return NumOutputs; }
+
+  IdentifierInfo *getOutputIdentifier(unsigned i) const {
+    return Names[i];
+  }
+
+  StringRef getOutputName(unsigned i) const {
+    if (IdentifierInfo *II = getOutputIdentifier(i))
+      return II->getName();
+
+    return StringRef();
+  }
+
+  Expr *getOutputExpr(unsigned i);
+
+  const Expr *getOutputExpr(unsigned i) const {
+    return const_cast<MSAsmStmt*>(this)->getOutputExpr(i);
+  }
+
+  //===--- Input operands ---===//
+
+  unsigned getNumInputs() const { return NumInputs; }
+
+  IdentifierInfo *getInputIdentifier(unsigned i) const {
+    return Names[i + NumOutputs];
+  }
+
+  StringRef getInputName(unsigned i) const {
+    if (IdentifierInfo *II = getInputIdentifier(i))
+      return II->getName();
+
+    return StringRef();
+  }
+
+  Expr *getInputExpr(unsigned i);
+  void setInputExpr(unsigned i, Expr *E);
+
+  const Expr *getInputExpr(unsigned i) const {
+    return const_cast<MSAsmStmt*>(this)->getInputExpr(i);
+  }
 
   //===--- Other ---===//
 
