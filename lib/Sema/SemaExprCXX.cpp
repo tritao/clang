@@ -2945,10 +2945,13 @@ static bool CheckUnaryTypeTraitTypeCompleteness(Sema &S,
     // type due to the overarching C++0x type predicates being implemented
     // requiring the complete type.
   case UTT_HasNothrowAssign:
+  case UTT_HasNothrowMoveAssign:
   case UTT_HasNothrowConstructor:
   case UTT_HasNothrowCopy:
   case UTT_HasTrivialAssign:
+  case UTT_HasTrivialMoveAssign:
   case UTT_HasTrivialDefaultConstructor:
+  case UTT_HasTrivialMoveConstructor:
   case UTT_HasTrivialCopy:
   case UTT_HasTrivialDestructor:
   case UTT_HasVirtualDestructor:
@@ -3092,6 +3095,15 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, UnaryTypeTrait UTT,
           C.getBaseElementType(T)->getAs<RecordType>())
       return cast<CXXRecordDecl>(RT->getDecl())->hasTrivialDefaultConstructor();
     return false;
+  case UTT_HasTrivialMoveConstructor:
+    // This trait is implemented by MSVC 2012 and needed to parse the
+    // standard library headers.
+    if (T.isPODType(Self.Context))
+      return true;
+    if (const RecordType *RT =
+          C.getBaseElementType(T)->getAs<RecordType>())
+      return cast<CXXRecordDecl>(RT->getDecl())->hasTrivialMoveConstructor();
+    return false;
   case UTT_HasTrivialCopy:
     // http://gcc.gnu.org/onlinedocs/gcc/Type-Traits.html:
     //   If __is_pod (type) is true or type is a reference type then
@@ -3122,6 +3134,15 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, UnaryTypeTrait UTT,
       return true;
     if (const RecordType *RT = T->getAs<RecordType>())
       return cast<CXXRecordDecl>(RT->getDecl())->hasTrivialCopyAssignment();
+    return false;
+  case UTT_HasTrivialMoveAssign:
+    // This trait is implemented by MSVC 2012 and needed to parse the
+    // standard library headers.
+    if (T.isPODType(Self.Context))
+      return true;
+    if (const RecordType *RT =
+          C.getBaseElementType(T)->getAs<RecordType>())
+      return cast<CXXRecordDecl>(RT->getDecl())->hasTrivialMoveAssignment();
     return false;
   case UTT_HasTrivialDestructor:
     // http://gcc.gnu.org/onlinedocs/gcc/Type-Traits.html:
@@ -3175,6 +3196,44 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, UnaryTypeTrait UTT,
           
           CXXMethodDecl *Operator = cast<CXXMethodDecl>(*Op);
           if (Operator->isCopyAssignmentOperator()) {
+            FoundAssign = true;
+            const FunctionProtoType *CPT
+                = Operator->getType()->getAs<FunctionProtoType>();
+            CPT = Self.ResolveExceptionSpec(KeyLoc, CPT);
+            if (!CPT)
+              return false;
+            if (!CPT->isNothrow(Self.Context))
+              return false;
+          }
+        }
+      }
+      
+      return FoundAssign;
+    }
+    return false;
+  case UTT_HasNothrowMoveAssign:
+    // This trait is implemented by MSVC 2012 and needed to parse the
+    // standard library headers.
+    if (T.isPODType(Self.Context))
+      return true;
+    if (const RecordType *RT = C.getBaseElementType(T)->getAs<RecordType>()) {
+      CXXRecordDecl* RD = cast<CXXRecordDecl>(RT->getDecl());
+      if (RD->hasTrivialMoveAssignment())
+        return true;
+      
+      bool FoundAssign = false;
+      DeclarationName Name = C.DeclarationNames.getCXXOperatorName(OO_Equal);
+      LookupResult Res(Self, DeclarationNameInfo(Name, KeyLoc),
+                       Sema::LookupOrdinaryName);
+      if (Self.LookupQualifiedName(Res, RD)) {
+        Res.suppressDiagnostics();
+        for (LookupResult::iterator Op = Res.begin(), OpEnd = Res.end();
+             Op != OpEnd; ++Op) {
+          if (isa<FunctionTemplateDecl>(*Op))
+            continue;
+          
+          CXXMethodDecl *Operator = cast<CXXMethodDecl>(*Op);
+          if (Operator->isMoveAssignmentOperator()) {
             FoundAssign = true;
             const FunctionProtoType *CPT
                 = Operator->getType()->getAs<FunctionProtoType>();
