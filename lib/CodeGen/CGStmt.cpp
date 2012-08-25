@@ -132,7 +132,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::ReturnStmtClass:   EmitReturnStmt(cast<ReturnStmt>(*S));     break;
 
   case Stmt::SwitchStmtClass:   EmitSwitchStmt(cast<SwitchStmt>(*S));     break;
-  case Stmt::AsmStmtClass:      EmitAsmStmt(cast<AsmStmt>(*S));           break;
+  case Stmt::GCCAsmStmtClass:   EmitGCCAsmStmt(cast<GCCAsmStmt>(*S));     break;
   case Stmt::MSAsmStmtClass:    EmitMSAsmStmt(cast<MSAsmStmt>(*S));       break;
 
   case Stmt::ObjCAtTryStmtClass:
@@ -899,7 +899,8 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
 
   // If the body of the case is just a 'break', and if there was no fallthrough,
   // try to not emit an empty block.
-  if ((CGM.getCodeGenOpts().OptimizationLevel > 0) && isa<BreakStmt>(S.getSubStmt())) {
+  if ((CGM.getCodeGenOpts().OptimizationLevel > 0) &&
+      isa<BreakStmt>(S.getSubStmt())) {
     JumpDest Block = BreakContinueStack.back().BreakBlock;
 
     // Only do this optimization if there are no cleanups that need emitting.
@@ -1294,7 +1295,7 @@ SimplifyConstraint(const char *Constraint, const TargetInfo &Target,
 static std::string
 AddVariableConstraints(const std::string &Constraint, const Expr &AsmExpr,
                        const TargetInfo &Target, CodeGenModule &CGM,
-                       const AsmStmt &Stmt) {
+                       const GCCAsmStmt &Stmt) {
   const DeclRefExpr *AsmDeclRef = dyn_cast<DeclRefExpr>(&AsmExpr);
   if (!AsmDeclRef)
     return Constraint;
@@ -1394,24 +1395,9 @@ static llvm::MDNode *getAsmSrcLocInfo(const StringLiteral *Str,
   return llvm::MDNode::get(CGF.getLLVMContext(), Locs);
 }
 
-void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
-  // Analyze the asm string to decompose it into its pieces.  We know that Sema
-  // has already done this, so it is guaranteed to be successful.
-  SmallVector<AsmStmt::AsmStringPiece, 4> Pieces;
-  unsigned DiagOffs;
-  S.AnalyzeAsmString(Pieces, getContext(), DiagOffs);
-
-  // Assemble the pieces into the final asm string.
-  std::string AsmString;
-  for (unsigned i = 0, e = Pieces.size(); i != e; ++i) {
-    if (Pieces[i].isString())
-      AsmString += Pieces[i].getString();
-    else if (Pieces[i].getModifier() == '\0')
-      AsmString += '$' + llvm::utostr(Pieces[i].getOperandNo());
-    else
-      AsmString += "${" + llvm::utostr(Pieces[i].getOperandNo()) + ':' +
-                   Pieces[i].getModifier() + '}';
-  }
+void CodeGenFunction::EmitGCCAsmStmt(const GCCAsmStmt &S) {
+  // Assemble the final asm string.
+  std::string AsmString = S.GenerateAsmString(getContext());
 
   // Get all the output and input constraints together.
   SmallVector<TargetInfo::ConstraintInfo, 4> OutputConstraintInfos;
@@ -1682,10 +1668,6 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
 }
 
 void CodeGenFunction::EmitMSAsmStmt(const MSAsmStmt &S) {
-  // MS-style inline assembly is not fully supported, so sema emits a warning.
-  if (!CGM.getCodeGenOpts().EmitMicrosoftInlineAsm)
-    return;
-
   std::vector<llvm::Value*> Args;
   std::vector<llvm::Type *> ArgTypes;
   std::string Constraints;

@@ -78,9 +78,9 @@ static bool CheckAsmLValue(const Expr *E, Sema &S) {
 /// isOperandMentioned - Return true if the specified operand # is mentioned
 /// anywhere in the decomposed asm string.
 static bool isOperandMentioned(unsigned OpNo,
-                         ArrayRef<AsmStmt::AsmStringPiece> AsmStrPieces) {
+                         ArrayRef<GCCAsmStmt::AsmStringPiece> AsmStrPieces) {
   for (unsigned p = 0, e = AsmStrPieces.size(); p != e; ++p) {
-    const AsmStmt::AsmStringPiece &Piece = AsmStrPieces[p];
+    const GCCAsmStmt::AsmStringPiece &Piece = AsmStrPieces[p];
     if (!Piece.isOperand()) continue;
 
     // If this is a reference to the input and if the input was the smaller
@@ -91,12 +91,12 @@ static bool isOperandMentioned(unsigned OpNo,
   return false;
 }
 
-StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
-                              bool IsVolatile, unsigned NumOutputs,
-                              unsigned NumInputs, IdentifierInfo **Names,
-                              MultiExprArg constraints, MultiExprArg exprs,
-                              Expr *asmString, MultiExprArg clobbers,
-                              SourceLocation RParenLoc) {
+StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
+                                 bool IsVolatile, unsigned NumOutputs,
+                                 unsigned NumInputs, IdentifierInfo **Names,
+                                 MultiExprArg constraints, MultiExprArg exprs,
+                                 Expr *asmString, MultiExprArg clobbers,
+                                 SourceLocation RParenLoc) {
   unsigned NumClobbers = clobbers.size();
   StringLiteral **Constraints =
     reinterpret_cast<StringLiteral**>(constraints.data());
@@ -200,13 +200,13 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
                   diag::err_asm_unknown_register_name) << Clobber);
   }
 
-  AsmStmt *NS =
-    new (Context) AsmStmt(Context, AsmLoc, IsSimple, IsVolatile, NumOutputs,
-                          NumInputs, Names, Constraints, Exprs, AsmString,
-                          NumClobbers, Clobbers, RParenLoc);
+  GCCAsmStmt *NS =
+    new (Context) GCCAsmStmt(Context, AsmLoc, IsSimple, IsVolatile, NumOutputs,
+                             NumInputs, Names, Constraints, Exprs, AsmString,
+                             NumClobbers, Clobbers, RParenLoc);
   // Validate the asm string, ensuring it makes sense given the operands we
   // have.
-  SmallVector<AsmStmt::AsmStringPiece, 8> Pieces;
+  SmallVector<GCCAsmStmt::AsmStringPiece, 8> Pieces;
   unsigned DiagOffs;
   if (unsigned DiagID = NS->AnalyzeAsmString(Pieces, Context, DiagOffs)) {
     Diag(getLocationOfStringLiteralByte(AsmString, DiagOffs), DiagID)
@@ -430,7 +430,7 @@ static std::string buildMSAsmString(Sema &SemaRef, ArrayRef<Token> AsmToks,
 
     if (isNewAsm) {
       if (i) {
-        AsmStrings.push_back(Asm.c_str());
+        AsmStrings.push_back(Asm.str());
         AsmTokRanges.push_back(std::make_pair(startTok, i-1));
         startTok = i;
         Res += Asm;
@@ -448,10 +448,10 @@ static std::string buildMSAsmString(Sema &SemaRef, ArrayRef<Token> AsmToks,
 
     Asm += getSpelling(SemaRef, AsmToks[i]);
   }
-  AsmStrings.push_back(Asm.c_str());
+  AsmStrings.push_back(Asm.str());
   AsmTokRanges.push_back(std::make_pair(startTok, AsmToks.size()-1));
   Res += Asm;
-  return Res.c_str();
+  return Res.str();
 }
 
 #define DEF_SIMPLE_MSASM                                                   \
@@ -465,8 +465,6 @@ StmtResult Sema::ActOnMSAsmStmt(SourceLocation AsmLoc,
                                 SourceLocation LBraceLoc,
                                 ArrayRef<Token> AsmToks,
                                 SourceLocation EndLoc) {
-  // MS-style inline assembly is not fully supported, so emit a warning.
-  Diag(AsmLoc, diag::warn_unsupported_msasm);
   SmallVector<StringRef,4> Clobbers;
   std::set<std::string> ClobberRegs;
   SmallVector<IdentifierInfo*, 4> Inputs;
@@ -598,13 +596,20 @@ StmtResult Sema::ActOnMSAsmStmt(SourceLocation AsmLoc,
                                                  AsmTokRanges[StrIdx].first,
                                                  AsmTokRanges[StrIdx].second);
           if (II) {
-            // FIXME: Compute the InputExpr/OutputExpr using ActOnIdExpression().
-            if (isDef) {
-              Outputs.push_back(II);
-              OutputExprs.push_back(0);
-            } else {
-              Inputs.push_back(II);
-              InputExprs.push_back(0);
+            CXXScopeSpec SS;
+            UnqualifiedId Id;
+            SourceLocation Loc;
+            Id.setIdentifier(II, AsmLoc);
+            ExprResult Result = ActOnIdExpression(getCurScope(), SS, Loc, Id,
+                                                  false, false);
+            if (!Result.isInvalid()) {
+              if (isDef) {
+                Outputs.push_back(II);
+                OutputExprs.push_back(Result.take());
+              } else {
+                Inputs.push_back(II);
+                InputExprs.push_back(Result.take());
+              }
             }
           }
         }

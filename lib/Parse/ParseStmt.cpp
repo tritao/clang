@@ -1596,6 +1596,9 @@ StmtResult Parser::ParseReturnStatement() {
 ///         ms-asm-line '\n' ms-asm-instruction-block
 ///
 StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
+  // MS-style inline assembly is not fully supported, so emit a warning.
+  Diag(AsmLoc, diag::warn_unsupported_msasm);
+
   SourceManager &SrcMgr = PP.getSourceManager();
   SourceLocation EndLoc = AsmLoc;
   SmallVector<Token, 4> AsmToks;
@@ -1688,6 +1691,21 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
     return StmtError();
   }
 
+  // If MS-style inline assembly is disabled, then build an empty asm.
+  if (!getLangOpts().EmitMicrosoftInlineAsm) {
+    Token t;
+    t.setKind(tok::string_literal);
+    t.setLiteralData("\"/*FIXME: not done*/\"");
+    t.clearFlag(Token::NeedsCleaning);
+    t.setLength(21);
+    ExprResult AsmString(Actions.ActOnStringLiteral(&t, 1));
+    ExprVector Constraints;
+    ExprVector Exprs;
+    ExprVector Clobbers;
+    return Actions.ActOnGCCAsmStmt(AsmLoc, true, true, 0, 0, 0, Constraints,
+                                   Exprs, AsmString.take(), Clobbers, EndLoc);
+  }
+
   // FIXME: We should be passing source locations for better diagnostics.
   return Actions.ActOnMSAsmStmt(AsmLoc, LBraceLoc,
                                 llvm::makeArrayRef(AsmToks), EndLoc);
@@ -1756,11 +1774,10 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   if (Tok.is(tok::r_paren)) {
     // We have a simple asm expression like 'asm("foo")'.
     T.consumeClose();
-    return Actions.ActOnAsmStmt(AsmLoc, /*isSimple*/ true, isVolatile,
-                                /*NumOutputs*/ 0, /*NumInputs*/ 0, 0,
-                                Constraints, Exprs,
-                                AsmString.take(), Clobbers,
-                                T.getCloseLocation());
+    return Actions.ActOnGCCAsmStmt(AsmLoc, /*isSimple*/ true, isVolatile,
+                                   /*NumOutputs*/ 0, /*NumInputs*/ 0, 0,
+                                   Constraints, Exprs, AsmString.take(),
+                                   Clobbers, T.getCloseLocation());
   }
 
   // Parse Outputs, if present.
@@ -1821,11 +1838,10 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   }
 
   T.consumeClose();
-  return Actions.ActOnAsmStmt(AsmLoc, false, isVolatile,
-                              NumOutputs, NumInputs, Names.data(),
-                              Constraints, Exprs,
-                              AsmString.take(), Clobbers,
-                              T.getCloseLocation());
+  return Actions.ActOnGCCAsmStmt(AsmLoc, false, isVolatile, NumOutputs,
+                                 NumInputs, Names.data(), Constraints, Exprs,
+                                 AsmString.take(), Clobbers,
+                                 T.getCloseLocation());
 }
 
 /// ParseAsmOperands - Parse the asm-operands production as used by

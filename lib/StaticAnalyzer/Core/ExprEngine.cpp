@@ -354,11 +354,6 @@ void ExprEngine::ProcessStmt(const CFGStmt S,
 
 void ExprEngine::ProcessInitializer(const CFGInitializer Init,
                                     ExplodedNode *Pred) {
-  ExplodedNodeSet Dst;
-  NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
-
-  ProgramStateRef State = Pred->getState();
-
   const CXXCtorInitializer *BMI = Init.getInitializer();
 
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
@@ -370,13 +365,19 @@ void ExprEngine::ProcessInitializer(const CFGInitializer Init,
                            cast<StackFrameContext>(Pred->getLocationContext());
   const CXXConstructorDecl *decl =
                            cast<CXXConstructorDecl>(stackFrame->getDecl());
+
+  ProgramStateRef State = Pred->getState();
   SVal thisVal = State->getSVal(svalBuilder.getCXXThis(decl, stackFrame));
+
+  PostInitializer PP(BMI, stackFrame);
+  ExplodedNodeSet Tmp(Pred);
 
   // Evaluate the initializer, if necessary
   if (BMI->isAnyMemberInitializer()) {
     // Constructors build the object directly in the field,
     // but non-objects must be copied in from the initializer.
-    if (!isa<CXXConstructExpr>(BMI->getInit())) {
+    const Expr *Init = BMI->getInit();
+    if (!isa<CXXConstructExpr>(Init)) {
       SVal FieldLoc;
       if (BMI->isIndirectMemberInitializer())
         FieldLoc = State->getLValue(BMI->getIndirectMember(), thisVal);
@@ -384,19 +385,23 @@ void ExprEngine::ProcessInitializer(const CFGInitializer Init,
         FieldLoc = State->getLValue(BMI->getMember(), thisVal);
 
       SVal InitVal = State->getSVal(BMI->getInit(), stackFrame);
-      State = State->bindLoc(FieldLoc, InitVal);
+
+      Tmp.clear();
+      evalBind(Tmp, Init, Pred, FieldLoc, InitVal, /*isInit=*/true, &PP);
     }
   } else {
     assert(BMI->isBaseInitializer() || BMI->isDelegatingInitializer());
     // We already did all the work when visiting the CXXConstructExpr.
   }
 
-  // Construct a PostInitializer node whether the state changed or not,
+  // Construct PostInitializer nodes whether the state changed or not,
   // so that the diagnostics don't get confused.
-  PostInitializer PP(BMI, stackFrame);
-  // Builder automatically add the generated node to the deferred set,
-  // which are processed in the builder's dtor.
-  Bldr.generateNode(PP, State, Pred);
+  ExplodedNodeSet Dst;
+  NodeBuilder Bldr(Tmp, Dst, *currBldrCtx);
+  for (ExplodedNodeSet::iterator I = Tmp.begin(), E = Tmp.end(); I != E; ++I) {
+    ExplodedNode *N = *I;
+    Bldr.generateNode(PP, N->getState(), N);
+  }
 
   // Enqueue the new nodes onto the work list.
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
@@ -662,9 +667,9 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       Bldr.addNodes(Dst);
       break;
 
-    case Stmt::AsmStmtClass:
+    case Stmt::GCCAsmStmtClass:
       Bldr.takeNodes(Pred);
-      VisitAsmStmt(cast<AsmStmt>(S), Pred, Dst);
+      VisitGCCAsmStmt(cast<GCCAsmStmt>(S), Pred, Dst);
       Bldr.addNodes(Dst);
       break;
 
@@ -1541,13 +1546,17 @@ void ExprEngine::VisitMemberExpr(const MemberExpr *M, ExplodedNode *Pred,
 void ExprEngine::evalBind(ExplodedNodeSet &Dst, const Stmt *StoreE,
                           ExplodedNode *Pred,
                           SVal location, SVal Val,
-                          bool atDeclInit) {
+                          bool atDeclInit, const ProgramPoint *PP) {
+
+  const LocationContext *LC = Pred->getLocationContext();
+  PostStmt PS(StoreE, LC);
+  if (!PP)
+    PP = &PS;
 
   // Do a previsit of the bind.
   ExplodedNodeSet CheckedSet;
   getCheckerManager().runCheckersForBind(CheckedSet, Pred, location, Val,
-                                         StoreE, *this,
-                                         ProgramPoint::PostStmtKind);
+                                         StoreE, *this, *PP);
 
   // If the location is not a 'Loc', it will already be handled by
   // the checkers.  There is nothing left to do.
@@ -1559,7 +1568,6 @@ void ExprEngine::evalBind(ExplodedNodeSet &Dst, const Stmt *StoreE,
   ExplodedNodeSet TmpDst;
   StmtNodeBuilder Bldr(CheckedSet, TmpDst, *currBldrCtx);
 
-  const LocationContext *LC = Pred->getLocationContext();
   for (ExplodedNodeSet::iterator I = CheckedSet.begin(), E = CheckedSet.end();
        I!=E; ++I) {
     ExplodedNode *PredI = *I;
@@ -1575,6 +1583,7 @@ void ExprEngine::evalBind(ExplodedNodeSet &Dst, const Stmt *StoreE,
     if (loc::MemRegionVal *LocRegVal = dyn_cast<loc::MemRegionVal>(&location)) {
       LocReg = LocRegVal->getRegion();
     }
+    
     const ProgramPoint L = PostStore(StoreE, LC, LocReg, 0);
     Bldr.generateNode(L, state, PredI);
   }
@@ -1775,8 +1784,8 @@ void ExprEngine::evalEagerlyAssume(ExplodedNodeSet &Dst, ExplodedNodeSet &Src,
   }
 }
 
-void ExprEngine::VisitAsmStmt(const AsmStmt *A, ExplodedNode *Pred,
-                              ExplodedNodeSet &Dst) {
+void ExprEngine::VisitGCCAsmStmt(const GCCAsmStmt *A, ExplodedNode *Pred,
+                                 ExplodedNodeSet &Dst) {
   StmtNodeBuilder Bldr(Pred, Dst, *currBldrCtx);
   // We have processed both the inputs and the outputs.  All of the outputs
   // should evaluate to Locs.  Nuke all of their values.
@@ -1787,7 +1796,7 @@ void ExprEngine::VisitAsmStmt(const AsmStmt *A, ExplodedNode *Pred,
 
   ProgramStateRef state = Pred->getState();
 
-  for (AsmStmt::const_outputs_iterator OI = A->begin_outputs(),
+  for (GCCAsmStmt::const_outputs_iterator OI = A->begin_outputs(),
        OE = A->end_outputs(); OI != OE; ++OI) {
     SVal X = state->getSVal(*OI, Pred->getLocationContext());
     assert (!isa<NonLoc>(X));  // Should be an Lval, or unknown, undef.
