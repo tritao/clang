@@ -6045,6 +6045,7 @@ void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (!Args.hasArg(options::OPT_nostdlib) &&
     !Args.hasArg(options::OPT_nostartfiles)) {
     CmdArgs.push_back("-defaultlib:libcmt");
+    CmdArgs.push_back("-defaultlib:libcpmt");
   }
 
   CmdArgs.push_back("-nologo");
