@@ -165,6 +165,7 @@ def OpaqueValueExpr : DStmt<Expr>;
 // Microsoft Extensions.
 def CXXUuidofExpr : DStmt<Expr>; 
 def SEHTryStmt : Stmt;
+def SEHLeaveStmt : Stmt;
 def SEHExceptStmt : Stmt;
 def SEHFinallyStmt : Stmt;
 def MSDependentExistsStmt : Stmt;

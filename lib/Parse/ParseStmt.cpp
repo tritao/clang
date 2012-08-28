@@ -169,6 +169,20 @@ Retry:
   }
 
   default: {
+
+    if (Kind == tok::kw___leave) {
+      Token LeaveTok = Tok;
+      ConsumeToken();
+
+      if (!getCurScope()->isSEHTryScope()) {
+        Diag(Tok, diag::err_seh___try_block)
+            << LeaveTok.getIdentifierInfo()->getName();
+        return StmtError();
+      }
+
+      return Actions.ActOnSEHLeaveStmt(LeaveTok.getLocation());
+    }
+
     if ((getLangOpts().CPlusPlus || !OnlyStatement) && isDeclarationStatement()) {
       SourceLocation DeclStart = Tok.getLocation(), DeclEnd;
       DeclGroupPtrTy Decl = ParseDeclaration(Stmts, Declarator::BlockContext,
@@ -322,7 +336,9 @@ StmtResult Parser::ParseSEHTryBlockCommon(SourceLocation TryLoc) {
   if(Tok.isNot(tok::l_brace))
     return StmtError(Diag(Tok,diag::err_expected_lbrace));
 
-  StmtResult TryBlock(ParseCompoundStatement());
+  // Use the SEHTryScope to handle __leave as a statement.
+  unsigned ScopeFlags = Scope::DeclScope | Scope::SEHTryScope;
+  StmtResult TryBlock(ParseCompoundStatement(false /*isStmtExpr*/, ScopeFlags));
   if(TryBlock.isInvalid())
     return TryBlock;
 
