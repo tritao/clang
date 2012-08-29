@@ -180,7 +180,8 @@ Retry:
         return StmtError();
       }
 
-      return Actions.ActOnSEHLeaveStmt(LeaveTok.getLocation());
+      Res = Actions.ActOnSEHLeaveStmt(LeaveTok.getLocation());
+      break;
     }
 
     if ((getLangOpts().CPlusPlus || !OnlyStatement) && isDeclarationStatement()) {
