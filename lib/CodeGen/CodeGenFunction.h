@@ -2003,6 +2003,7 @@ public:
   void EmitCaseStmtRange(const CaseStmt &S);
   void EmitGCCAsmStmt(const GCCAsmStmt &S);
   void EmitMSAsmStmt(const MSAsmStmt &S);
+  void EmitSEHTryStmt(const SEHTryStmt &S);
 
   void EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S);
   void EmitObjCAtTryStmt(const ObjCAtTryStmt &S);

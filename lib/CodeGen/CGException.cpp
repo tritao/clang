@@ -1607,3 +1607,9 @@ llvm::BasicBlock *CodeGenFunction::getEHResumeBlock() {
 
   return EHResumeBlock;
 }
+
+void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
+  // Translate SEH exception to LLVM exception model
+
+
+}
