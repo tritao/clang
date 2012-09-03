@@ -39,7 +39,10 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Stmt.h"
+#include "clang/AST/Type.h"
+#include "clang/ASTMatchers/ASTTypeTraits.h"
 #include "llvm/ADT/VariadicFunction.h"
+#include "llvm/Support/type_traits.h"
 #include <map>
 #include <string>
 #include <vector>
@@ -57,6 +60,45 @@ class BoundNodes;
 namespace internal {
 
 class BoundNodesTreeBuilder;
+/// \brief Internal version of BoundNodes. Holds all the bound nodes.
+class BoundNodesMap {
+public:
+  /// \brief Adds \c Node to the map with key \c ID.
+  ///
+  /// The node's base type should be in NodeBaseType or it will be unaccessible.
+  template <typename T>
+  void addNode(StringRef ID, const T* Node) {
+    NodeMap[ID] = ast_type_traits::DynTypedNode::create<const T*>(Node);
+  }
+  void addNode(StringRef ID, ast_type_traits::DynTypedNode Node) {
+    NodeMap[ID] = Node;
+  }
+
+  /// \brief Returns the AST node bound to \c ID.
+  ///
+  /// Returns NULL if there was no node bound to \c ID or if there is a node but
+  /// it cannot be converted to the specified type.
+  template <typename T>
+  const T getNodeAs(StringRef ID) const {
+    IDToNodeMap::const_iterator It = NodeMap.find(ID);
+    if (It == NodeMap.end()) {
+      return NULL;
+    }
+    return It->second.get<T>();
+  }
+
+  /// \brief Copies all ID/Node pairs to BoundNodesTreeBuilder \c Builder.
+  void copyTo(BoundNodesTreeBuilder *Builder) const;
+
+  /// \brief Copies all ID/Node pairs to BoundNodesMap \c Other.
+  void copyTo(BoundNodesMap *Other) const;
+
+private:
+  /// \brief A map from IDs to the bound nodes.
+  typedef std::map<std::string, ast_type_traits::DynTypedNode> IDToNodeMap;
+
+  IDToNodeMap NodeMap;
+};
 
 /// \brief A tree of bound nodes in match results.
 ///
@@ -84,11 +126,10 @@ public:
   BoundNodesTree();
 
   /// \brief Create a BoundNodesTree from pre-filled maps of bindings.
-  BoundNodesTree(const std::map<std::string, const Decl*>& DeclBindings,
-                 const std::map<std::string, const Stmt*>& StmtBindings,
+  BoundNodesTree(const BoundNodesMap& Bindings,
                  const std::vector<BoundNodesTree> RecursiveBindings);
 
-  /// \brief Adds all bound nodes to bound_nodes_builder.
+  /// \brief Adds all bound nodes to \c Builder.
   void copyTo(BoundNodesTreeBuilder* Builder) const;
 
   /// \brief Visits all matches that this BoundNodesTree represents.
@@ -99,17 +140,12 @@ public:
 private:
   void visitMatchesRecursively(
       Visitor* ResultVistior,
-      std::map<std::string, const Decl*> DeclBindings,
-      std::map<std::string, const Stmt*> StmtBindings);
-
-  template <typename T>
-  void copyBindingsTo(const T& bindings, BoundNodesTreeBuilder* Builder) const;
+      BoundNodesMap *AggregatedBindings);
 
   // FIXME: Find out whether we want to use different data structures here -
   // first benchmarks indicate that it doesn't matter though.
 
-  std::map<std::string, const Decl*> DeclBindings;
-  std::map<std::string, const Stmt*> StmtBindings;
+  BoundNodesMap Bindings;
 
   std::vector<BoundNodesTree> RecursiveBindings;
 };
@@ -123,12 +159,13 @@ public:
   BoundNodesTreeBuilder();
 
   /// \brief Add a binding from an id to a node.
-  ///
-  /// FIXME: Add overloads for all AST base types.
-  /// @{
-  void setBinding(const std::string &Id, const Decl *Node);
-  void setBinding(const std::string &Id, const Stmt *Node);
-  /// @}
+  template <typename T>
+  void setBinding(const std::string &Id, const T *Node) {
+    Bindings.addNode(Id, Node);
+  }
+  void setBinding(const std::string &Id, ast_type_traits::DynTypedNode Node) {
+    Bindings.addNode(Id, Node);
+  }
 
   /// \brief Adds a branch in the tree.
   void addMatch(const BoundNodesTree& Bindings);
@@ -140,8 +177,7 @@ private:
   BoundNodesTreeBuilder(const BoundNodesTreeBuilder&);  // DO NOT IMPLEMENT
   void operator=(const BoundNodesTreeBuilder&);  // DO NOT IMPLEMENT
 
-  std::map<std::string, const Decl*> DeclBindings;
-  std::map<std::string, const Stmt*> StmtBindings;
+  BoundNodesMap Bindings;
 
   std::vector<BoundNodesTree> RecursiveBindings;
 };

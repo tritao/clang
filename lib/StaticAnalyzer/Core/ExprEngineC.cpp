@@ -264,8 +264,10 @@ void ExprEngine::VisitCast(const CastExpr *CastE, const Expr *Ex,
       case CK_NonAtomicToAtomic:
         // True no-ops.
       case CK_NoOp:
+      case CK_ConstructorConversion:
       case CK_UserDefinedConversion:
-      case CK_FunctionToPointerDecay: {
+      case CK_FunctionToPointerDecay:
+      case CK_BuiltinFnToFnPtr: {
         // Copy the SVal of Ex to CastE.
         ProgramStateRef state = Pred->getState();
         const LocationContext *LCtx = Pred->getLocationContext();
@@ -375,7 +377,6 @@ void ExprEngine::VisitCast(const CastExpr *CastE, const Expr *Ex,
       case CK_BaseToDerivedMemberPointer:
       case CK_DerivedToBaseMemberPointer:
       case CK_ReinterpretMemberPointer:
-      case CK_ConstructorConversion:
       case CK_VectorSplat:
       case CK_LValueBitCast: {
         // Recover some path-sensitivty by conjuring a new value.
@@ -856,8 +857,10 @@ void ExprEngine::VisitIncrementDecrementOperator(const UnaryOperator* U,
     
     if (U->getType()->isAnyPointerType())
       RHS = svalBuilder.makeArrayIndex(1);
-    else
+    else if (U->getType()->isIntegralOrEnumerationType())
       RHS = svalBuilder.makeIntVal(1, U->getType());
+    else
+      RHS = UnknownVal();
     
     SVal Result = evalBinOp(state, Op, V2, RHS, U->getType());
     

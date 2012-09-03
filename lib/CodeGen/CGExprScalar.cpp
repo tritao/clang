@@ -1036,7 +1036,9 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   // are in the same order as in the CastKind enum.
   switch (Kind) {
   case CK_Dependent: llvm_unreachable("dependent cast kind in IR gen!");
-      
+  case CK_BuiltinFnToFnPtr:
+    llvm_unreachable("builtin functions are handled elsewhere");
+
   case CK_LValueBitCast: 
   case CK_ObjCObjectLValueCast: {
     Value *V = EmitLValue(E).getAddress();
@@ -1306,7 +1308,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
   // Most common case by far: integer increment.
   } else if (type->isIntegerType()) {
 
-    llvm::Value *amt = llvm::ConstantInt::get(value->getType(), amount);
+    llvm::Value *amt = llvm::ConstantInt::get(value->getType(), amount, true);
 
     // Note that signed integer inc/dec with width less than int can't
     // overflow because of promotion rules; we're just eliding a few steps here.
@@ -2123,7 +2125,7 @@ Value *ScalarExprEmitter::EmitShl(const BinOpInfo &Ops) {
     llvm::BasicBlock *Cont = CGF.createBasicBlock("shl.cont");
     llvm::BasicBlock *Trap = CGF.getTrapBB();
     llvm::Value *WidthMinusOne =
-      llvm::ConstantInt::get(RHS->getType(), Width - 1, "shl.width");
+      llvm::ConstantInt::get(RHS->getType(), Width - 1);
     CGF.Builder.CreateCondBr(Builder.CreateICmpULE(RHS, WidthMinusOne),
                              Cont, Trap);
     CGF.EmitBlock(Cont);

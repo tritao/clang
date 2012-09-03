@@ -168,8 +168,6 @@ protected:
   /// result of this call.
   virtual void getExtraInvalidatedRegions(RegionList &Regions) const {}
 
-  virtual QualType getDeclaredResultType() const = 0;
-
 public:
   virtual ~CallEvent() {}
 
@@ -291,12 +289,9 @@ public:
     return cloneWithState<CallEvent>(NewState);
   }
 
-  /// \brief Returns true if this is a statement that can be considered for
-  /// inlining.
-  ///
-  /// FIXME: This should go away once CallEvents are cheap and easy to
-  /// construct from ExplodedNodes.
-  static bool mayBeInlined(const Stmt *S);
+  /// \brief Returns true if this is a statement is a function or method call
+  /// of some kind.
+  static bool isCallStmt(const Stmt *S);
 
   // Iterator access to formal parameters and their types.
 private:
@@ -359,8 +354,6 @@ protected:
                   const LocationContext *LCtx)
     : CallEvent(D, St, LCtx) {}
   AnyFunctionCall(const AnyFunctionCall &Other) : CallEvent(Other) {}
-
-  virtual QualType getDeclaredResultType() const;
 
 public:
   // This function is overridden by subclasses, but they must return
@@ -455,8 +448,6 @@ protected:
   virtual void cloneTo(void *Dest) const { new (Dest) BlockCall(*this); }
 
   virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
-
-  virtual QualType getDeclaredResultType() const;
 
 public:
   /// \brief Returns the region associated with this instance of the block.
@@ -774,8 +765,6 @@ protected:
   virtual void cloneTo(void *Dest) const { new (Dest) ObjCMethodCall(*this); }
 
   virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
-
-  virtual QualType getDeclaredResultType() const;
 
   /// Check if the selector may have multiple definitions (may have overrides).
   virtual bool canBeOverridenInSubclass(ObjCInterfaceDecl *IDecl,

@@ -740,7 +740,7 @@ static void PrintCursor(CXCursor Cursor,
         lineCols[I].line = line;
         lineCols[I].col = column;
       }
-      // Make the order of the override list deterministic.
+      /* Make the order of the override list deterministic. */
       qsort(lineCols, num_overridden, sizeof(LineCol), lineCol_cmp);
       for (I = 0; I != num_overridden; ++I) {
         if (I)
@@ -2207,6 +2207,7 @@ static const char *getEntityKindString(CXIdxEntityKind kind) {
   case CXIdxEntity_CXXDestructor: return "destructor";
   case CXIdxEntity_CXXConversionFunction: return "conversion-func";
   case CXIdxEntity_CXXTypeAlias: return "type-alias";
+  case CXIdxEntity_CXXInterface: return "c++-__interface";
   }
   assert(0 && "Garbage entity kind");
   return 0;

@@ -65,30 +65,9 @@ public:
   }
 };
 
-bool runToolOnCode(clang::FrontendAction *ToolAction, const Twine &Code,
-                   ArrayRef<const char *> ClangArgs) {
-  SmallString<16> FileNameStorage;
-  StringRef FileNameRef = "input.cc";
-
-  std::vector<std::string> ArgVector;
-  ArgVector.push_back("clang-tool");
-  ArgVector.push_back("-fsyntax-only");
-  ArgVector.push_back(FileNameRef.data());
-  for (unsigned i = 0, e = ClangArgs.size(); i != e; ++i)
-    ArgVector.push_back(ClangArgs[i]);
-
-  FileManager Files((FileSystemOptions()));
-  ToolInvocation Invocation(ArgVector, ToolAction, &Files);
-
-  SmallString<1024> CodeStorage;
-  Invocation.mapVirtualFile(FileNameRef,
-                            Code.toNullTerminatedStringRef(CodeStorage));
-  return Invocation.run();
-}
-
 ::testing::AssertionResult PrintedDeclMatches(
                                   StringRef Code,
-                                  ArrayRef<const char *> ClangArgs,
+                                  const std::vector<std::string> &Args,
                                   const DeclarationMatcher &NodeMatch,
                                   StringRef ExpectedPrinted) {
   PrintMatch Printer;
@@ -96,7 +75,7 @@ bool runToolOnCode(clang::FrontendAction *ToolAction, const Twine &Code,
   Finder.addMatcher(NodeMatch, &Printer);
   OwningPtr<FrontendActionFactory> Factory(newFrontendActionFactory(&Finder));
 
-  if (!runToolOnCode(Factory->create(), Code, ClangArgs))
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, Args))
     return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
 
   if (Printer.getNumFoundDecls() == 0)
@@ -116,21 +95,23 @@ bool runToolOnCode(clang::FrontendAction *ToolAction, const Twine &Code,
   return ::testing::AssertionSuccess();
 }
 
-::testing::AssertionResult PrintedDeclMatches(StringRef Code,
-                                              StringRef DeclName,
-                                              StringRef ExpectedPrinted) {
+::testing::AssertionResult PrintedDeclCXX98Matches(StringRef Code,
+                                                   StringRef DeclName,
+                                                   StringRef ExpectedPrinted) {
+  std::vector<std::string> Args(1, "-std=c++98");
   return PrintedDeclMatches(Code,
-                            ArrayRef<const char *>(),
+                            Args,
                             namedDecl(hasName(DeclName)).bind("id"),
                             ExpectedPrinted);
 }
 
-::testing::AssertionResult PrintedDeclMatches(
+::testing::AssertionResult PrintedDeclCXX98Matches(
                                   StringRef Code,
                                   const DeclarationMatcher &NodeMatch,
                                   StringRef ExpectedPrinted) {
+  std::vector<std::string> Args(1, "-std=c++98");
   return PrintedDeclMatches(Code,
-                            ArrayRef<const char *>(),
+                            Args,
                             NodeMatch,
                             ExpectedPrinted);
 }
@@ -138,8 +119,9 @@ bool runToolOnCode(clang::FrontendAction *ToolAction, const Twine &Code,
 ::testing::AssertionResult PrintedDeclCXX11Matches(StringRef Code,
                                                    StringRef DeclName,
                                                    StringRef ExpectedPrinted) {
+  std::vector<std::string> Args(1, "-std=c++11");
   return PrintedDeclMatches(Code,
-                            ArrayRef<const char *>("-std=c++11"),
+                            Args,
                             namedDecl(hasName(DeclName)).bind("id"),
                             ExpectedPrinted);
 }
@@ -148,8 +130,9 @@ bool runToolOnCode(clang::FrontendAction *ToolAction, const Twine &Code,
                                   StringRef Code,
                                   const DeclarationMatcher &NodeMatch,
                                   StringRef ExpectedPrinted) {
+  std::vector<std::string> Args(1, "-std=c++11");
   return PrintedDeclMatches(Code,
-                            ArrayRef<const char *>("-std=c++11"),
+                            Args,
                             NodeMatch,
                             ExpectedPrinted);
 }
@@ -157,7 +140,7 @@ bool runToolOnCode(clang::FrontendAction *ToolAction, const Twine &Code,
 } // unnamed namespace
 
 TEST(DeclPrinter, TestNamespace1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "namespace A { int B; }",
     "A",
     "namespace A {\n}"));
@@ -173,7 +156,7 @@ TEST(DeclPrinter, TestNamespace2) {
 }
 
 TEST(DeclPrinter, TestNamespaceAlias1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "namespace Z { }"
     "namespace A = Z;",
     "A",
@@ -182,7 +165,7 @@ TEST(DeclPrinter, TestNamespaceAlias1) {
 }
 
 TEST(DeclPrinter, TestNamespaceAlias2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "namespace X { namespace Y {} }"
     "namespace A = X::Y;",
     "A",
@@ -191,7 +174,7 @@ TEST(DeclPrinter, TestNamespaceAlias2) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class A { int a; };",
     "A",
     "class A {\n}"));
@@ -199,7 +182,7 @@ TEST(DeclPrinter, TestCXXRecordDecl1) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A { int a; };",
     "A",
     "struct A {\n}"));
@@ -207,7 +190,7 @@ TEST(DeclPrinter, TestCXXRecordDecl2) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "union A { int a; };",
     "A",
     "union A {\n}"));
@@ -215,7 +198,7 @@ TEST(DeclPrinter, TestCXXRecordDecl3) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl4) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class Z { int a; };"
     "class A : Z { int b; };",
     "A",
@@ -224,7 +207,7 @@ TEST(DeclPrinter, TestCXXRecordDecl4) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl5) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z { int a; };"
     "struct A : Z { int b; };",
     "A",
@@ -233,7 +216,7 @@ TEST(DeclPrinter, TestCXXRecordDecl5) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl6) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class Z { int a; };"
     "class A : public Z { int b; };",
     "A",
@@ -242,7 +225,7 @@ TEST(DeclPrinter, TestCXXRecordDecl6) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl7) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class Z { int a; };"
     "class A : protected Z { int b; };",
     "A",
@@ -251,7 +234,7 @@ TEST(DeclPrinter, TestCXXRecordDecl7) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl8) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class Z { int a; };"
     "class A : private Z { int b; };",
     "A",
@@ -260,7 +243,7 @@ TEST(DeclPrinter, TestCXXRecordDecl8) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl9) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class Z { int a; };"
     "class A : virtual Z { int b; };",
     "A",
@@ -269,7 +252,7 @@ TEST(DeclPrinter, TestCXXRecordDecl9) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl10) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class Z { int a; };"
     "class A : virtual public Z { int b; };",
     "A",
@@ -278,7 +261,7 @@ TEST(DeclPrinter, TestCXXRecordDecl10) {
 }
 
 TEST(DeclPrinter, TestCXXRecordDecl11) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class Z { int a; };"
     "class Y : virtual public Z { int b; };"
     "class A : virtual public Z, private Y { int c; };",
@@ -288,7 +271,7 @@ TEST(DeclPrinter, TestCXXRecordDecl11) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void A();",
     "A",
     "void A()"));
@@ -296,7 +279,7 @@ TEST(DeclPrinter, TestFunctionDecl1) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void A() {}",
     "A",
     "void A()"));
@@ -304,7 +287,7 @@ TEST(DeclPrinter, TestFunctionDecl2) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void Z();"
     "void A() { Z(); }",
     "A",
@@ -313,7 +296,7 @@ TEST(DeclPrinter, TestFunctionDecl3) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl4) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "extern void A();",
     "A",
     "extern void A()"));
@@ -321,7 +304,7 @@ TEST(DeclPrinter, TestFunctionDecl4) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl5) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "static void A();",
     "A",
     "static void A()"));
@@ -329,7 +312,7 @@ TEST(DeclPrinter, TestFunctionDecl5) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl6) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "inline void A();",
     "A",
     "inline void A()"));
@@ -345,7 +328,7 @@ TEST(DeclPrinter, TestFunctionDecl7) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl8) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void A(int a);",
     "A",
     "void A(int a)"));
@@ -353,7 +336,7 @@ TEST(DeclPrinter, TestFunctionDecl8) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl9) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void A(...);",
     "A",
     "void A(...)"));
@@ -361,7 +344,7 @@ TEST(DeclPrinter, TestFunctionDecl9) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl10) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void A(int a, ...);",
     "A",
     "void A(int a, ...)"));
@@ -369,7 +352,7 @@ TEST(DeclPrinter, TestFunctionDecl10) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl11) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "typedef long size_t;"
     "typedef int *pInt;"
     "void A(int a, pInt b, size_t c);",
@@ -379,7 +362,7 @@ TEST(DeclPrinter, TestFunctionDecl11) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl12) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void A(int a, int b = 0);",
     "A",
     "void A(int a, int b = 0)"));
@@ -387,7 +370,7 @@ TEST(DeclPrinter, TestFunctionDecl12) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl13) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void (*A(int a))(int b);",
     "A",
     "void (*A(int a))(int)"));
@@ -395,7 +378,7 @@ TEST(DeclPrinter, TestFunctionDecl13) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl14) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T>"
     "void A(T t) { }"
     "template<>"
@@ -407,7 +390,7 @@ TEST(DeclPrinter, TestFunctionDecl14) {
 
 
 TEST(DeclPrinter, TestCXXConstructorDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  A();"
     "};",
@@ -417,7 +400,7 @@ TEST(DeclPrinter, TestCXXConstructorDecl1) {
 }
 
 TEST(DeclPrinter, TestCXXConstructorDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  A(int a);"
     "};",
@@ -427,7 +410,7 @@ TEST(DeclPrinter, TestCXXConstructorDecl2) {
 }
 
 TEST(DeclPrinter, TestCXXConstructorDecl3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  A(const A &a);"
     "};",
@@ -437,7 +420,7 @@ TEST(DeclPrinter, TestCXXConstructorDecl3) {
 }
 
 TEST(DeclPrinter, TestCXXConstructorDecl4) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  A(const A &a, int = 0);"
     "};",
@@ -457,7 +440,7 @@ TEST(DeclPrinter, TestCXXConstructorDecl5) {
 }
 
 TEST(DeclPrinter, TestCXXConstructorDecl6) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  explicit A(int a);"
     "};",
@@ -467,33 +450,30 @@ TEST(DeclPrinter, TestCXXConstructorDecl6) {
 }
 
 TEST(DeclPrinter, TestCXXConstructorDecl7) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX11Matches(
     "struct A {"
     "  constexpr A();"
     "};",
-    ArrayRef<const char *>("-std=c++11"),
     constructorDecl(ofClass(hasName("A"))).bind("id"),
     ""));
     // WRONG; Should be: "constexpr A();"
 }
 
 TEST(DeclPrinter, TestCXXConstructorDecl8) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX11Matches(
     "struct A {"
     "  A() = default;"
     "};",
-    ArrayRef<const char *>("-std=c++11"),
     constructorDecl(ofClass(hasName("A"))).bind("id"),
     ""));
     // WRONG; Should be: "A() = default;"
 }
 
 TEST(DeclPrinter, TestCXXConstructorDecl9) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX11Matches(
     "struct A {"
     "  A() = delete;"
     "};",
-    ArrayRef<const char *>("-std=c++11"),
     constructorDecl(ofClass(hasName("A"))).bind("id"),
     " = delete"));
     // WRONG; Should be: "A() = delete;"
@@ -524,7 +504,7 @@ TEST(DeclPrinter, TestCXXConstructorDecl11) {
 #endif
 
 TEST(DeclPrinter, TestCXXDestructorDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  ~A();"
     "};",
@@ -534,7 +514,7 @@ TEST(DeclPrinter, TestCXXDestructorDecl1) {
 }
 
 TEST(DeclPrinter, TestCXXDestructorDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  virtual ~A();"
     "};",
@@ -544,7 +524,7 @@ TEST(DeclPrinter, TestCXXDestructorDecl2) {
 }
 
 TEST(DeclPrinter, TestCXXConversionDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  operator int();"
     "};",
@@ -554,7 +534,7 @@ TEST(DeclPrinter, TestCXXConversionDecl1) {
 }
 
 TEST(DeclPrinter, TestCXXConversionDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct A {"
     "  operator bool();"
     "};",
@@ -564,7 +544,7 @@ TEST(DeclPrinter, TestCXXConversionDecl2) {
 }
 
 TEST(DeclPrinter, TestCXXConversionDecl3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {};"
     "struct A {"
     "  operator Z();"
@@ -575,42 +555,39 @@ TEST(DeclPrinter, TestCXXConversionDecl3) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_AllocationFunction1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX11Matches(
     "namespace std { typedef decltype(sizeof(int)) size_t; }"
     "struct Z {"
     "  void *operator new(std::size_t);"
     "};",
-    ArrayRef<const char *>("-std=c++11"),
     methodDecl(ofClass(hasName("Z"))).bind("id"),
     "void *operator new(std::size_t)"));
     // Should be: with semicolon
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_AllocationFunction2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX11Matches(
     "namespace std { typedef decltype(sizeof(int)) size_t; }"
     "struct Z {"
     "  void *operator new[](std::size_t);"
     "};",
-    ArrayRef<const char *>("-std=c++11"),
     methodDecl(ofClass(hasName("Z"))).bind("id"),
     "void *operator new[](std::size_t)"));
     // Should be: with semicolon
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_AllocationFunction3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX11Matches(
     "struct Z {"
     "  void operator delete(void *);"
     "};",
-    ArrayRef<const char *>("-std=c++11"),
     methodDecl(ofClass(hasName("Z"))).bind("id"),
     "void operator delete(void *) noexcept"));
     // Should be: with semicolon, without noexcept?
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_AllocationFunction4) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  void operator delete(void *);"
     "};",
@@ -620,11 +597,10 @@ TEST(DeclPrinter, TestCXXMethodDecl_AllocationFunction4) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_AllocationFunction5) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX11Matches(
     "struct Z {"
     "  void operator delete[](void *);"
     "};",
-    ArrayRef<const char *>("-std=c++11"),
     methodDecl(ofClass(hasName("Z"))).bind("id"),
     "void operator delete[](void *) noexcept"));
     // Should be: with semicolon, without noexcept?
@@ -651,7 +627,7 @@ TEST(DeclPrinter, TestCXXMethodDecl_Operator1) {
     Expected.append("(Z z)");
     // Should be: with semicolon
 
-    ASSERT_TRUE(PrintedDeclMatches(
+    ASSERT_TRUE(PrintedDeclCXX98Matches(
       Code,
       methodDecl(ofClass(hasName("Z"))).bind("id"),
       Expected));
@@ -675,7 +651,7 @@ TEST(DeclPrinter, TestCXXMethodDecl_Operator2) {
     Expected.append("()");
     // Should be: with semicolon
 
-    ASSERT_TRUE(PrintedDeclMatches(
+    ASSERT_TRUE(PrintedDeclCXX98Matches(
       Code,
       methodDecl(ofClass(hasName("Z"))).bind("id"),
       Expected));
@@ -683,7 +659,7 @@ TEST(DeclPrinter, TestCXXMethodDecl_Operator2) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  void A(int a);"
     "};",
@@ -693,7 +669,7 @@ TEST(DeclPrinter, TestCXXMethodDecl1) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  virtual void A(int a);"
     "};",
@@ -703,7 +679,7 @@ TEST(DeclPrinter, TestCXXMethodDecl2) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  virtual void A(int a);"
     "};"
@@ -717,7 +693,7 @@ TEST(DeclPrinter, TestCXXMethodDecl3) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl4) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  inline void A(int a);"
     "};",
@@ -727,7 +703,7 @@ TEST(DeclPrinter, TestCXXMethodDecl4) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl5) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  virtual void A(int a) = 0;"
     "};",
@@ -737,7 +713,7 @@ TEST(DeclPrinter, TestCXXMethodDecl5) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_CVQualifier1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  void A(int a) const;"
     "};",
@@ -747,7 +723,7 @@ TEST(DeclPrinter, TestCXXMethodDecl_CVQualifier1) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_CVQualifier2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  void A(int a) volatile;"
     "};",
@@ -757,7 +733,7 @@ TEST(DeclPrinter, TestCXXMethodDecl_CVQualifier2) {
 }
 
 TEST(DeclPrinter, TestCXXMethodDecl_CVQualifier3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  void A(int a) const volatile;"
     "};",
@@ -787,7 +763,7 @@ TEST(DeclPrinter, TestCXXMethodDecl_RefQualifier2) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl_ExceptionSpecification1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  void A(int a) throw();"
     "};",
@@ -797,7 +773,7 @@ TEST(DeclPrinter, TestFunctionDecl_ExceptionSpecification1) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl_ExceptionSpecification2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z {"
     "  void A(int a) throw(int);"
     "};",
@@ -807,7 +783,7 @@ TEST(DeclPrinter, TestFunctionDecl_ExceptionSpecification2) {
 }
 
 TEST(DeclPrinter, TestFunctionDecl_ExceptionSpecification3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "class ZZ {};"
     "struct Z {"
     "  void A(int a) throw(ZZ, int);"
@@ -859,7 +835,7 @@ TEST(DeclPrinter, TestFunctionDecl_ExceptionSpecification7) {
 }
 
 TEST(DeclPrinter, TestVarDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "char *const (*(*A)[5])(int);",
     "A",
     "char *const (*(*A)[5])(int)"));
@@ -867,7 +843,7 @@ TEST(DeclPrinter, TestVarDecl1) {
 }
 
 TEST(DeclPrinter, TestVarDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "void (*A)() throw(int);",
     "A",
     "void (*A)() throw(int)"));
@@ -883,7 +859,7 @@ TEST(DeclPrinter, TestVarDecl3) {
 }
 
 TEST(DeclPrinter, TestFieldDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T>"
     "struct Z { T A; };",
     "A",
@@ -892,7 +868,7 @@ TEST(DeclPrinter, TestFieldDecl1) {
 }
 
 TEST(DeclPrinter, TestFieldDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<int N>"
     "struct Z { int A[N]; };",
     "A",
@@ -901,7 +877,7 @@ TEST(DeclPrinter, TestFieldDecl2) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T>"
     "struct A { T a; };",
     classTemplateDecl(hasName("A")).bind("id"),
@@ -910,7 +886,7 @@ TEST(DeclPrinter, TestClassTemplateDecl1) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T = int>"
     "struct A { T a; };",
     classTemplateDecl(hasName("A")).bind("id"),
@@ -919,7 +895,7 @@ TEST(DeclPrinter, TestClassTemplateDecl2) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<class T>"
     "struct A { T a; };",
     classTemplateDecl(hasName("A")).bind("id"),
@@ -928,7 +904,7 @@ TEST(DeclPrinter, TestClassTemplateDecl3) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl4) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T, typename U>"
     "struct A { T a; U b; };",
     classTemplateDecl(hasName("A")).bind("id"),
@@ -937,7 +913,7 @@ TEST(DeclPrinter, TestClassTemplateDecl4) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl5) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<int N>"
     "struct A { int a[N]; };",
     classTemplateDecl(hasName("A")).bind("id"),
@@ -946,7 +922,7 @@ TEST(DeclPrinter, TestClassTemplateDecl5) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl6) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<int N = 42>"
     "struct A { int a[N]; };",
     classTemplateDecl(hasName("A")).bind("id"),
@@ -955,7 +931,7 @@ TEST(DeclPrinter, TestClassTemplateDecl6) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl7) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "typedef int MyInt;"
     "template<MyInt N>"
     "struct A { int a[N]; };",
@@ -965,7 +941,7 @@ TEST(DeclPrinter, TestClassTemplateDecl7) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl8) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<template<typename U> class T> struct A { };",
     classTemplateDecl(hasName("A")).bind("id"),
     "template <template <typename U> class T> struct A {\n}"));
@@ -973,7 +949,7 @@ TEST(DeclPrinter, TestClassTemplateDecl8) {
 }
 
 TEST(DeclPrinter, TestClassTemplateDecl9) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T> struct Z { };"
     "template<template<typename U> class T = Z> struct A { };",
     classTemplateDecl(hasName("A")).bind("id"),
@@ -1000,7 +976,7 @@ TEST(DeclPrinter, TestClassTemplateDecl11) {
 }
 
 TEST(DeclPrinter, TestClassTemplatePartialSpecializationDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T, typename U>"
     "struct A { T a; U b; };"
     "template<typename T>"
@@ -1011,7 +987,7 @@ TEST(DeclPrinter, TestClassTemplatePartialSpecializationDecl1) {
 }
 
 TEST(DeclPrinter, TestClassTemplatePartialSpecializationDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T>"
     "struct A { T a; };"
     "template<typename T>"
@@ -1022,7 +998,7 @@ TEST(DeclPrinter, TestClassTemplatePartialSpecializationDecl2) {
 }
 
 TEST(DeclPrinter, TestClassTemplateSpecializationDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T>"
     "struct A { T a; };"
     "template<>"
@@ -1033,7 +1009,7 @@ TEST(DeclPrinter, TestClassTemplateSpecializationDecl1) {
 }
 
 TEST(DeclPrinter, TestFunctionTemplateDecl1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T>"
     "void A(T &t);",
     functionTemplateDecl(hasName("A")).bind("id"),
@@ -1042,7 +1018,7 @@ TEST(DeclPrinter, TestFunctionTemplateDecl1) {
 }
 
 TEST(DeclPrinter, TestFunctionTemplateDecl2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T>"
     "void A(T &t) { }",
     functionTemplateDecl(hasName("A")).bind("id"),
@@ -1062,7 +1038,7 @@ TEST(DeclPrinter, TestFunctionTemplateDecl3) {
 }
 
 TEST(DeclPrinter, TestFunctionTemplateDecl4) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z { template<typename T> void A(T t); };",
     functionTemplateDecl(hasName("A")).bind("id"),
     "template <typename T> void A(T t)"));
@@ -1070,7 +1046,7 @@ TEST(DeclPrinter, TestFunctionTemplateDecl4) {
 }
 
 TEST(DeclPrinter, TestFunctionTemplateDecl5) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "struct Z { template<typename T> void A(T t) {} };",
     functionTemplateDecl(hasName("A")).bind("id"),
     "template <typename T> void A(T t)"));
@@ -1078,7 +1054,7 @@ TEST(DeclPrinter, TestFunctionTemplateDecl5) {
 }
 
 TEST(DeclPrinter, TestFunctionTemplateDecl6) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T >struct Z {"
     "  template<typename U> void A(U t) {}"
     "};",
@@ -1088,7 +1064,7 @@ TEST(DeclPrinter, TestFunctionTemplateDecl6) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList1) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T> struct Z {};"
     "struct X {};"
     "Z<X> A;",
@@ -1098,7 +1074,7 @@ TEST(DeclPrinter, TestTemplateArgumentList1) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList2) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T, typename U> struct Z {};"
     "struct X {};"
     "typedef int Y;"
@@ -1109,7 +1085,7 @@ TEST(DeclPrinter, TestTemplateArgumentList2) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList3) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T> struct Z {};"
     "template<typename T> struct X {};"
     "Z<X<int> > A;",
@@ -1129,7 +1105,7 @@ TEST(DeclPrinter, TestTemplateArgumentList4) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList5) {
-  ASSERT_TRUE(PrintedDeclCXX11Matches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T> struct Z {};"
     "template<typename T> struct X { Z<T> A; };",
     "A",
@@ -1138,7 +1114,7 @@ TEST(DeclPrinter, TestTemplateArgumentList5) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList6) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<template<typename T> class U> struct Z {};"
     "template<typename T> struct X {};"
     "Z<X> A;",
@@ -1148,7 +1124,7 @@ TEST(DeclPrinter, TestTemplateArgumentList6) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList7) {
-  ASSERT_TRUE(PrintedDeclCXX11Matches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<template<typename T> class U> struct Z {};"
     "template<template<typename T> class U> struct Y {"
     "  Z<U> A;"
@@ -1159,7 +1135,7 @@ TEST(DeclPrinter, TestTemplateArgumentList7) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList8) {
-  ASSERT_TRUE(PrintedDeclCXX11Matches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<typename T> struct Z {};"
     "template<template<typename T> class U> struct Y {"
     "  Z<U<int> > A;"
@@ -1170,7 +1146,7 @@ TEST(DeclPrinter, TestTemplateArgumentList8) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList9) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<unsigned I> struct Z {};"
     "Z<0> A;",
     "A",
@@ -1179,7 +1155,7 @@ TEST(DeclPrinter, TestTemplateArgumentList9) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList10) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<unsigned I> struct Z {};"
     "template<unsigned I> struct X { Z<I> A; };",
     "A",
@@ -1188,7 +1164,7 @@ TEST(DeclPrinter, TestTemplateArgumentList10) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList11) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<int I> struct Z {};"
     "Z<42 * 10 - 420 / 1> A;",
     "A",
@@ -1197,7 +1173,7 @@ TEST(DeclPrinter, TestTemplateArgumentList11) {
 }
 
 TEST(DeclPrinter, TestTemplateArgumentList12) {
-  ASSERT_TRUE(PrintedDeclMatches(
+  ASSERT_TRUE(PrintedDeclCXX98Matches(
     "template<const char *p> struct Z {};"
     "extern const char X[] = \"aaa\";"
     "Z<X> A;",
@@ -1239,3 +1215,4 @@ TEST(DeclPrinter, TestTemplateArgumentList15) {
     "Z<sizeof...(T)> A"));
     // Should be: with semicolon, without extra space in "> >"
 }
+

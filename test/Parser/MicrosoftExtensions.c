@@ -105,5 +105,6 @@ __declspec() void quux( void ) {
 
 void SEH() {
   __try { __leave; } __except (0) {}
+  __try { } __except (0) { __leave; } // expected-error {{__leave only allowed in __try block}}
   __try { } __finally { __leave; } // expected-error {{__leave only allowed in __try block}}
 }

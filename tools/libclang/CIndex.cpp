@@ -182,8 +182,13 @@ bool CursorVisitor::Visit(CXCursor Cursor, bool CheckedRegionOfInterest) {
   case CXChildVisit_Continue:
     return false;
 
-  case CXChildVisit_Recurse:
-    return VisitChildren(Cursor);
+  case CXChildVisit_Recurse: {
+    bool ret = VisitChildren(Cursor);
+    if (PostChildrenVisitor)
+      if (PostChildrenVisitor(Cursor, ClientData))
+        return true;
+    return ret;
+  }
   }
 
   llvm_unreachable("Invalid CXChildVisitResult!");
@@ -565,6 +570,16 @@ bool CursorVisitor::VisitDeclContext(DeclContext *DC) {
     if (D->getLexicalDeclContext() != DC)
       continue;
     CXCursor Cursor = MakeCXCursor(D, TU, RegionOfInterest);
+
+    // Ignore synthesized ivars here, otherwise if we have something like:
+    //   @synthesize prop = _prop;
+    // and '_prop' is not declared, we will encounter a '_prop' ivar before
+    // encountering the 'prop' synthesize declaration and we will think that
+    // we passed the region-of-interest.
+    if (ObjCIvarDecl *ivarD = dyn_cast<ObjCIvarDecl>(D)) {
+      if (ivarD->getSynthesize())
+        continue;
+    }
 
     // FIXME: ObjCClassRef/ObjCProtocolRef for forward class/protocol
     // declarations is a mismatch with the compiler semantics.
@@ -1622,6 +1637,7 @@ DEF_JOB(ExplicitTemplateArgsVisit, ASTTemplateArgumentListInfo,
         ExplicitTemplateArgsVisitKind)
 DEF_JOB(SizeOfPackExprParts, SizeOfPackExpr, SizeOfPackExprPartsKind)
 DEF_JOB(LambdaExprParts, LambdaExpr, LambdaExprPartsKind)
+DEF_JOB(PostChildrenVisit, void, PostChildrenVisitKind)
 #undef DEF_JOB
 
 class DeclVisit : public VisitorJob {
@@ -2198,6 +2214,8 @@ bool CursorVisitor::RunVisitorWorkList(VisitorWorkList &WL) {
           case CXChildVisit_Break: return true;
           case CXChildVisit_Continue: break;
           case CXChildVisit_Recurse:
+            if (PostChildrenVisitor)
+              WL.push_back(PostChildrenVisit(0, Cursor));
             EnqueueWorkList(WL, S);
             break;
         }
@@ -2314,6 +2332,11 @@ bool CursorVisitor::RunVisitorWorkList(VisitorWorkList &WL) {
         }
         break;
       }
+
+      case VisitorJob::PostChildrenVisitKind:
+        if (PostChildrenVisitor(Parent, ClientData))
+          return true;
+        break;
     }
   }
   return false;
@@ -3536,6 +3559,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
       return createCXString("CXXForRangeStmt");
   case CXCursor_SEHTryStmt:
       return createCXString("SEHTryStmt");
+  case CXCursor_SEHLeaveStmt:
+      return createCXString("SEHLeaveStmt");
   case CXCursor_SEHExceptStmt:
       return createCXString("SEHExceptStmt");
   case CXCursor_SEHFinallyStmt:
@@ -4809,6 +4834,9 @@ typedef llvm::DenseMap<unsigned, CXCursor> AnnotateTokensData;
 static enum CXChildVisitResult AnnotateTokensVisitor(CXCursor cursor,
                                                      CXCursor parent,
                                                      CXClientData client_data);
+static bool AnnotateTokensPostChildrenVisitor(CXCursor cursor,
+                                              CXClientData client_data);
+
 namespace {
 class AnnotateTokensWorker {
   AnnotateTokensData &Annotated;
@@ -4820,6 +4848,13 @@ class AnnotateTokensWorker {
   CursorVisitor AnnotateVis;
   SourceManager &SrcMgr;
   bool HasContextSensitiveKeywords;
+
+  struct PostChildrenInfo {
+    CXCursor Cursor;
+    SourceRange CursorRange;
+    unsigned BeforeChildrenTokenIdx;
+  };
+  llvm::SmallVector<PostChildrenInfo, 8> PostChildrenInfos;
   
   bool MoreTokens() const { return TokIdx < NumTokens; }
   unsigned NextToken() const { return TokIdx; }
@@ -4848,18 +4883,25 @@ public:
                   AnnotateTokensVisitor, this,
                   /*VisitPreprocessorLast=*/true,
                   /*VisitIncludedEntities=*/false,
-                  RegionOfInterest),
+                  RegionOfInterest,
+                  /*VisitDeclsOnly=*/false,
+                  AnnotateTokensPostChildrenVisitor),
       SrcMgr(static_cast<ASTUnit*>(tu->TUData)->getSourceManager()),
       HasContextSensitiveKeywords(false) { }
 
   void VisitChildren(CXCursor C) { AnnotateVis.VisitChildren(C); }
   enum CXChildVisitResult Visit(CXCursor cursor, CXCursor parent);
+  bool postVisitChildren(CXCursor cursor);
   void AnnotateTokens();
   
   /// \brief Determine whether the annotator saw any cursors that have 
   /// context-sensitive keywords.
   bool hasContextSensitiveKeywords() const {
     return HasContextSensitiveKeywords;
+  }
+
+  ~AnnotateTokensWorker() {
+    assert(PostChildrenInfos.empty());
   }
 };
 }
@@ -5121,31 +5163,59 @@ AnnotateTokensWorker::Visit(CXCursor cursor, CXCursor parent) {
     }
   }
 
-  // Visit children to get their cursor information.
-  const unsigned BeforeChildren = NextToken();
-  VisitChildren(cursor);
+  // Before recursing into the children keep some state that we are going
+  // to use in the AnnotateTokensWorker::postVisitChildren callback to do some
+  // extra work after the child nodes are visited.
+  // Note that we don't call VisitChildren here to avoid traversing statements
+  // code-recursively which can blow the stack.
+
+  PostChildrenInfo Info;
+  Info.Cursor = cursor;
+  Info.CursorRange = cursorRange;
+  Info.BeforeChildrenTokenIdx = NextToken();
+  PostChildrenInfos.push_back(Info);
+
+  return CXChildVisit_Recurse;
+}
+
+bool AnnotateTokensWorker::postVisitChildren(CXCursor cursor) {
+  if (PostChildrenInfos.empty())
+    return false;
+  const PostChildrenInfo &Info = PostChildrenInfos.back();
+  if (!clang_equalCursors(Info.Cursor, cursor))
+    return false;
+
+  const unsigned BeforeChildren = Info.BeforeChildrenTokenIdx;
   const unsigned AfterChildren = NextToken();
+  SourceRange cursorRange = Info.CursorRange;
 
   // Scan the tokens that are at the end of the cursor, but are not captured
   // but the child cursors.
   annotateAndAdvanceTokens(cursor, RangeOverlap, cursorRange);
-  
+
   // Scan the tokens that are at the beginning of the cursor, but are not
   // capture by the child cursors.
   for (unsigned I = BeforeChildren; I != AfterChildren; ++I) {
     if (!clang_isInvalid(clang_getCursorKind(Cursors[I])))
       break;
-    
+
     Cursors[I] = cursor;
   }
 
-  return CXChildVisit_Continue;
+  PostChildrenInfos.pop_back();
+  return false;
 }
 
 static enum CXChildVisitResult AnnotateTokensVisitor(CXCursor cursor,
                                                      CXCursor parent,
                                                      CXClientData client_data) {
   return static_cast<AnnotateTokensWorker*>(client_data)->Visit(cursor, parent);
+}
+
+static bool AnnotateTokensPostChildrenVisitor(CXCursor cursor,
+                                              CXClientData client_data) {
+  return static_cast<AnnotateTokensWorker*>(client_data)->
+                                                      postVisitChildren(cursor);
 }
 
 namespace {

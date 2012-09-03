@@ -64,6 +64,10 @@ public:
     return Eng.getStoreManager();
   }
 
+  const AnalyzerOptions::ConfigTable &getConfig() const {
+    return Eng.getAnalysisManager().options.Config;
+  }
+  
   /// \brief Returns the previous node in the exploded graph, which includes
   /// the state of the program before the checker ran. Note, checkers should
   /// not retain the node in their state since the nodes might get invalidated.
@@ -94,6 +98,11 @@ public:
 
   const StackFrameContext *getStackFrame() const {
     return Pred->getStackFrame();
+  }
+
+  /// Returns true if the predecessor is within an inlined function/method.
+  bool isWithinInlined() {
+    return (getStackFrame()->getParent() != 0);
   }
 
   BugReporter &getBugReporter() {

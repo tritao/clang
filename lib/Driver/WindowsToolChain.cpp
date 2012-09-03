@@ -349,8 +349,8 @@ std::vector<std::string> clang::driver::GetWindowsSystemIncludeDirs() {
     "C:/Program Files/Microsoft Visual Studio 8/VC/PlatformSDK/Include"
   };
 
-  for (int i = 0; i < sizeof(FallbackPaths) / sizeof(FallbackPaths[0]); ++i)
-    Paths.push_back(Paths[i]);
+  for (unsigned i = 0; i < sizeof(FallbackPaths) / sizeof(FallbackPaths[0]); ++i)
+    Paths.push_back(FallbackPaths[i]);
 
   return Paths;
 }

@@ -198,6 +198,19 @@ Retry:
 
     return ParseExprStatement();
   }
+  
+  case tok::kw___leave: {
+    Token LeaveTok = Tok;
+    ConsumeToken();
+    if (getCurScope()->isSEHTryScope()) {
+      Res = Actions.ActOnSEHLeaveStmt(LeaveTok.getLocation());
+    } else {
+      Diag(LeaveTok, diag::err_seh___try_block)
+         << LeaveTok.getIdentifierInfo()->getName();
+      Res = StmtError();
+    }
+    break;
+  }
 
   case tok::kw_case:                // C99 6.8.1: labeled-statement
     return ParseCaseStatement();

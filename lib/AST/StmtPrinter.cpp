@@ -422,7 +422,7 @@ void StmtPrinter::VisitGCCAsmStmt(GCCAsmStmt *Node) {
     if (i != 0)
       OS << ", ";
 
-    VisitStringLiteral(Node->getClobber(i));
+    VisitStringLiteral(Node->getClobberStringLiteral(i));
   }
 
   OS << ");\n";
@@ -551,7 +551,7 @@ void StmtPrinter::PrintRawSEHFinallyStmt(SEHFinallyStmt *Node) {
 void StmtPrinter::PrintRawSEHExceptHandler(SEHExceptStmt *Node) {
   OS << "__except (";
   VisitExpr(Node->getFilterExpr());
-  OS << ")\n";
+  OS << ") ";
   PrintRawCompoundStmt(Node->getBlock());
   OS << "\n";
 }

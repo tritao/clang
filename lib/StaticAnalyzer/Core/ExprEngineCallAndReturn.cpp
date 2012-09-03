@@ -18,6 +18,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/ParentMap.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/SaveAndRestore.h"
@@ -27,6 +28,9 @@ using namespace ento;
 
 STATISTIC(NumOfDynamicDispatchPathSplits,
   "The # of times we split the path due to imprecise dynamic dispatch info");
+
+STATISTIC(NumInlinedCalls,
+  "The # of times we inlined a call");
 
 void ExprEngine::processCallEnter(CallEnter CE, ExplodedNode *Pred) {
   // Get the entry block in the CFG of the callee.
@@ -62,22 +66,31 @@ static std::pair<const Stmt*,
   const StackFrameContext *SF =
           Node->getLocation().getLocationContext()->getCurrentStackFrame();
 
-  // Back up through the ExplodedGraph until we reach a statement node.
+  // Back up through the ExplodedGraph until we reach a statement node in this
+  // stack frame.
   while (Node) {
     const ProgramPoint &PP = Node->getLocation();
 
-    if (const StmtPoint *SP = dyn_cast<StmtPoint>(&PP)) {
-      S = SP->getStmt();
-      break;
-    } else if (const CallExitEnd *CEE = dyn_cast<CallExitEnd>(&PP)) {
-      S = CEE->getCalleeContext()->getCallSite();
-      if (S)
+    if (PP.getLocationContext()->getCurrentStackFrame() == SF) {
+      if (const StmtPoint *SP = dyn_cast<StmtPoint>(&PP)) {
+        S = SP->getStmt();
         break;
-      // If we have an implicit call, we'll probably end up with a
-      // StmtPoint inside the callee, which is acceptable.
-      // (It's possible a function ONLY contains implicit calls -- such as an
-      // implicitly-generated destructor -- so we shouldn't just skip back to
-      // the CallEnter node and keep going.)
+      } else if (const CallExitEnd *CEE = dyn_cast<CallExitEnd>(&PP)) {
+        S = CEE->getCalleeContext()->getCallSite();
+        if (S)
+          break;
+
+        // If there is no statement, this is an implicitly-generated call.
+        // We'll walk backwards over it and then continue the loop to find
+        // an actual statement.
+        const CallEnter *CE;
+        do {
+          Node = Node->getFirstPred();
+          CE = Node->getLocationAs<CallEnter>();
+        } while (!CE || CE->getCalleeContext() != CEE->getCalleeContext());
+
+        // Continue searching the graph.
+      }
     } else if (const CallEnter *CE = dyn_cast<CallEnter>(&PP)) {
       // If we reached the CallEnter for this function, it has no statements.
       if (CE->getCalleeContext() == SF)
@@ -163,7 +176,7 @@ void ExprEngine::processCallExit(ExplodedNode *CEBNode) {
   // that we report the issues such as leaks in the stack contexts in which
   // they occurred.
   ExplodedNodeSet CleanedNodes;
-  if (LastSt && Blk) {
+  if (LastSt && Blk && AMgr.options.AnalysisPurgeOpt != PurgeNone) {
     static SimpleProgramPointTag retValBind("ExprEngine : Bind Return Value");
     PostStmt Loc(LastSt, calleeCtx, &retValBind);
     bool isNew;
@@ -255,13 +268,13 @@ bool ExprEngine::shouldInlineDecl(const Decl *D, ExplodedNode *Pred) {
     return false;
 
   if (getNumberStackFrames(Pred->getLocationContext())
-        == AMgr.InlineMaxStackDepth)
+        == AMgr.options.InlineMaxStackDepth)
     return false;
 
   if (Engine.FunctionSummaries->hasReachedMaxBlockCount(D))
     return false;
 
-  if (CalleeCFG->getNumBlockIDs() > AMgr.InlineMaxFunctionSize)
+  if (CalleeCFG->getNumBlockIDs() > AMgr.options.InlineMaxFunctionSize)
     return false;
 
   // Do not inline variadic calls (for now).
@@ -303,21 +316,6 @@ template<> struct ProgramStateTrait<DynamicDispatchBifurcationMap>
 
 }}
 
-static bool shouldInlineCXX(AnalysisManager &AMgr) {
-  switch (AMgr.IPAMode) {
-  case None:
-  case BasicInlining:
-    return false;
-  case Inlining:
-  case DynamicDispatch:
-  case DynamicDispatchBifurcate:
-    return true;
-  case NumIPAModes:
-    llvm_unreachable("not actually a valid option");
-  }
-  llvm_unreachable("bogus IPAMode");
-}
-
 bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
                             NodeBuilder &Bldr, ExplodedNode *Pred,
                             ProgramStateRef State) {
@@ -327,24 +325,19 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
   const StackFrameContext *CallerSFC = CurLC->getCurrentStackFrame();
   const LocationContext *ParentOfCallee = 0;
 
+  const AnalyzerOptions &Opts = getAnalysisManager().options;
+
   // FIXME: Refactor this check into a hypothetical CallEvent::canInline.
   switch (Call.getKind()) {
   case CE_Function:
     break;
   case CE_CXXMember:
   case CE_CXXMemberOperator:
-    if (!shouldInlineCXX(getAnalysisManager()))
+    if (!Opts.mayInlineCXXMemberFunction(CIMK_MemberFunctions))
       return false;
     break;
   case CE_CXXConstructor: {
-    if (!shouldInlineCXX(getAnalysisManager()))
-      return false;
-
-    // Only inline constructors and destructors if we built the CFGs for them
-    // properly.
-    const AnalysisDeclContext *ADC = CallerSFC->getAnalysisDeclContext();
-    if (!ADC->getCFGBuildOptions().AddImplicitDtors ||
-        !ADC->getCFGBuildOptions().AddInitializers)
+    if (!Opts.mayInlineCXXMemberFunction(CIMK_Constructors))
       return false;
 
     const CXXConstructorCall &Ctor = cast<CXXConstructorCall>(Call);
@@ -354,9 +347,31 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
     if (Target && isa<ElementRegion>(Target))
       return false;
 
+    // FIXME: This is a hack. We don't use the correct region for a new
+    // expression, so if we inline the constructor its result will just be
+    // thrown away. This short-term hack is tracked in <rdar://problem/12180598>
+    // and the longer-term possible fix is discussed in PR12014.
+    const CXXConstructExpr *CtorExpr = Ctor.getOriginExpr();
+    if (const Stmt *Parent = CurLC->getParentMap().getParent(CtorExpr))
+      if (isa<CXXNewExpr>(Parent))
+        return false;
+
+    // Inlining constructors requires including initializers in the CFG.
+    const AnalysisDeclContext *ADC = CallerSFC->getAnalysisDeclContext();
+    assert(ADC->getCFGBuildOptions().AddInitializers && "No CFG initializers");
+    (void)ADC;
+
+    // If the destructor is trivial, it's always safe to inline the constructor.
+    if (Ctor.getDecl()->getParent()->hasTrivialDestructor())
+      break;
+    
+    // For other types, only inline constructors if destructor inlining is
+    // also enabled.
+    if (!Opts.mayInlineCXXMemberFunction(CIMK_Destructors))
+      return false;
+
     // FIXME: This is a hack. We don't handle temporary destructors
     // right now, so we shouldn't inline their constructors.
-    const CXXConstructExpr *CtorExpr = Ctor.getOriginExpr();
     if (CtorExpr->getConstructionKind() == CXXConstructExpr::CK_Complete)
       if (!Target || !isa<DeclRegion>(Target))
         return false;
@@ -364,15 +379,13 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
     break;
   }
   case CE_CXXDestructor: {
-    if (!shouldInlineCXX(getAnalysisManager()))
+    if (!Opts.mayInlineCXXMemberFunction(CIMK_Destructors))
       return false;
 
-    // Only inline constructors and destructors if we built the CFGs for them
-    // properly.
+    // Inlining destructors requires building the CFG correctly.
     const AnalysisDeclContext *ADC = CallerSFC->getAnalysisDeclContext();
-    if (!ADC->getCFGBuildOptions().AddImplicitDtors ||
-        !ADC->getCFGBuildOptions().AddInitializers)
-      return false;
+    assert(ADC->getCFGBuildOptions().AddImplicitDtors && "No CFG destructors");
+    (void)ADC;
 
     const CXXDestructorCall &Dtor = cast<CXXDestructorCall>(Call);
 
@@ -384,9 +397,6 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
     break;
   }
   case CE_CXXAllocator:
-    if (!shouldInlineCXX(getAnalysisManager()))
-      return false;
-
     // Do not inline allocators until we model deallocators.
     // This is unfortunate, but basically necessary for smart pointers and such.
     return false;
@@ -400,8 +410,8 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
     break;
   }
   case CE_ObjCMessage:
-    if (!(getAnalysisManager().IPAMode == DynamicDispatch ||
-          getAnalysisManager().IPAMode == DynamicDispatchBifurcate))
+    if (!(getAnalysisManager().options.IPAMode == DynamicDispatch ||
+          getAnalysisManager().options.IPAMode == DynamicDispatchBifurcate))
       return false;
     break;
   }
@@ -438,6 +448,12 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
   // If we decided to inline the call, the successor has been manually
   // added onto the work list so remove it from the node builder.
   Bldr.takeNodes(Pred);
+
+  NumInlinedCalls++;
+
+  // Mark the decl as visited.
+  if (VisitedCallees)
+    VisitedCallees->insert(D);
 
   return true;
 }
@@ -574,13 +590,13 @@ void ExprEngine::defaultEvalCall(NodeBuilder &Bldr, ExplodedNode *Pred,
     if (D) {
       if (RD.mayHaveOtherDefinitions()) {
         // Explore with and without inlining the call.
-        if (getAnalysisManager().IPAMode == DynamicDispatchBifurcate) {
+        if (getAnalysisManager().options.IPAMode == DynamicDispatchBifurcate) {
           BifurcateCall(RD.getDispatchRegion(), *Call, D, Bldr, Pred);
           return;
         }
 
         // Don't inline if we're not in any dynamic dispatch mode.
-        if (getAnalysisManager().IPAMode != DynamicDispatch) {
+        if (getAnalysisManager().options.IPAMode != DynamicDispatch) {
           conservativeEvalCall(*Call, Bldr, Pred, State);
           return;
         }

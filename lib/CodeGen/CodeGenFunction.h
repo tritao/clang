@@ -2001,9 +2001,7 @@ public:
   void EmitDefaultStmt(const DefaultStmt &S);
   void EmitCaseStmt(const CaseStmt &S);
   void EmitCaseStmtRange(const CaseStmt &S);
-  void EmitGCCAsmStmt(const GCCAsmStmt &S);
-  void EmitMSAsmStmt(const MSAsmStmt &S);
-  void EmitSEHTryStmt(const SEHTryStmt &S);
+  void EmitAsmStmt(const AsmStmt &S);
 
   void EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S);
   void EmitObjCAtTryStmt(const ObjCAtTryStmt &S);
@@ -2017,6 +2015,7 @@ public:
   void ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock = false);
 
   void EmitCXXTryStmt(const CXXTryStmt &S);
+  void EmitSEHTryStmt(const SEHTryStmt &S);
   void EmitCXXForRangeStmt(const CXXForRangeStmt &S);
 
   //===--------------------------------------------------------------------===//

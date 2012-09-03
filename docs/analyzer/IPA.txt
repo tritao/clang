@@ -1,6 +1,9 @@
 Inlining
 ========
 
+There are several options that control which calls the analyzer will consider for
+inlining. The major one is -analyzer-ipa:
+
   -analyzer-ipa=none - All inlining is disabled. This is the only mode available
      in LLVM 3.1 and earlier and in Xcode 4.3 and earlier.
 
@@ -23,7 +26,24 @@ Inlining
    does not drop the coverage in cases when the parent class has code that is
    only exercised when some of its methods are overridden.
 
-Currently, -analyzer-ipa=basic-inlining is the default mode.
+Currently, -analyzer-ipa=dynamic-bifurcate is the default mode.
+
+
+A second setting, c++-inlining, controls which C++ member functions may be
+inlined. This option uses the analyzer's configuration table, so it is specified
+as shown here:
+
+  -analyzer-config c++-inlining=[none | methods | constructors | destructors]
+
+Each of these modes implies that all the previous member function kinds will be
+inlined as well; it doesn't make sense to inline destructors without inlining
+constructors, for example.
+
+The default c++-inlining mode is 'methods', meaning only regular member
+functions and overloaded operators will be inlined. Note that no C++ member
+functions will be inlined under -analyzer-ipa=none or
+-analyzer-ipa=basic-inlining.
+
 
 Basics of Implementation
 -----------------------
@@ -98,11 +118,13 @@ some cases, however, where the analyzer chooses not to inline:
 - In C++, constructors are not inlined unless the destructor call will be
   processed by the ExprEngine. Thus, if the CFG was built without nodes for
   implicit destructors, or if the destructors for the given object are not
-  represented in the CFG, the constructor will not be inlined. See "C++ Caveats"
-  below.
-
-- In C++, ExprEngine does not inline custom implementations of operator 'new'.
+  represented in the CFG, the constructor will not be inlined. (As an exception,
+  constructors for objects with trivial constructors can still be inlined.)
   See "C++ Caveats" below.
+
+- In C++, ExprEngine does not inline custom implementations of operator 'new'
+  or operator 'delete', nor does it inline the constructors and destructors
+  associated with these. See "C++ Caveats" below.
 
 - Calls resulting in "dynamic dispatch" are specially handled.  See more below.
 
@@ -263,7 +285,8 @@ There are several limitations in the current implementation:
 
 - Temporaries are poorly modeled right now because we're not confident in the
   placement of their destructors in the CFG. We currently won't inline their
-  constructors, and don't process their destructors at all.
+  constructors unless the destructor is trivial, and don't process their
+  destructors at all, not even to invalidate the region.
 
 - 'new' is poorly modeled due to some nasty CFG/design issues.  This is tracked
   in PR12014.  'delete' is not modeled at all.

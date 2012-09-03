@@ -954,8 +954,7 @@ bool Darwin::SupportsObjCGC() const {
 void Darwin::CheckObjCARC() const {
   if (isTargetIPhoneOS() || !isMacosxVersionLT(10, 6))
     return;
-  getDriver().Diag(diag::err_arc_unsupported_on_toolchain)
-    << 0; // "versions of Mac OS X prior to 10.6"
+  getDriver().Diag(diag::err_arc_unsupported_on_toolchain);
 }
 
 std::string
@@ -2065,7 +2064,7 @@ Linux::Linux(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)
                       Arch == llvm::Triple::mips64 ||
                       Arch == llvm::Triple::mips64el;
 
-  const bool IsAndroid = Triple.getEnvironment() == llvm::Triple::ANDROIDEABI;
+  const bool IsAndroid = Triple.getEnvironment() == llvm::Triple::Android;
 
   // Do not use 'gnu' hash style for Mips targets because .gnu.hash
   // and the MIPS ABI require .dynsym to be sorted in different ways.
