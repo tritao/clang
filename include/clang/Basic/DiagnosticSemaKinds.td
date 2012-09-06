@@ -1672,9 +1672,7 @@ def warn_objc_redundant_literal_use : Warning<
 
 def err_attr_tlsmodel_arg : Error<"tls_model must be \"global-dynamic\", "
   "\"local-dynamic\", \"initial-exec\" or \"local-exec\"">;
-def warn_ms_inheritance_already_declared : Warning<
-  "ignored since inheritance model was already declared as '"
-  "%select{single|multiple|virtual}0'">, InGroup<Microsoft>;
+
 def err_only_annotate_after_access_spec : Error<
   "access specifier can only have annotation attributes">;
 
@@ -5411,6 +5409,10 @@ def warn_scanf_nonzero_width : Warning<
   InGroup<Format>;
 def warn_printf_conversion_argument_type_mismatch : Warning<
   "format specifies type %0 but the argument has type %1">,
+  InGroup<Format>;
+def warn_format_argument_needs_cast : Warning<
+  "values of type '%0' should not be used as format arguments; add an explicit "
+  "cast to %1 instead">,
   InGroup<Format>;
 def warn_printf_positional_arg_exceeds_data_args : Warning <
   "data argument position '%0' exceeds the number of data arguments (%1)">,

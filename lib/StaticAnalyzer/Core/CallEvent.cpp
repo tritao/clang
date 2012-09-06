@@ -61,7 +61,7 @@ static bool isCallbackArg(SVal V, QualType T) {
   // Check if a callback is passed inside a struct (for both, struct passed by
   // reference and by value). Dig just one level into the struct for now.
 
-  if (isa<PointerType>(T) || isa<ReferenceType>(T))
+  if (T->isAnyPointerType() || T->isReferenceType())
     T = T->getPointeeType();
 
   if (const RecordType *RT = T->getAsStructureType()) {
@@ -384,6 +384,25 @@ void CXXInstanceCall::getExtraInvalidatedRegions(RegionList &Regions) const {
     Regions.push_back(R);
 }
 
+SVal CXXInstanceCall::getCXXThisVal() const {
+  const Expr *Base = getCXXThisExpr();
+  // FIXME: This doesn't handle an overloaded ->* operator.
+  if (!Base)
+    return UnknownVal();
+
+  SVal ThisVal = getSVal(Base);
+
+  // FIXME: This is only necessary because we can call member functions on
+  // struct rvalues, which do not have regions we can use for a 'this' pointer.
+  // Ideally this should eventually be changed to an assert, i.e. all
+  // non-Unknown, non-null 'this' values should be loc::MemRegionVals.
+  if (isa<DefinedSVal>(ThisVal))
+    if (!ThisVal.getAsRegion() && !ThisVal.isConstant())
+      return UnknownVal();
+
+  return ThisVal;
+}
+
 
 RuntimeDefinition CXXInstanceCall::getRuntimeDefinition() const {
   // Do we have a decl at all?
@@ -408,6 +427,8 @@ RuntimeDefinition CXXInstanceCall::getRuntimeDefinition() const {
 
   // Is the type a C++ class? (This is mostly a defensive check.)
   QualType RegionType = DynType.getType()->getPointeeType();
+  assert(!RegionType.isNull() && "DynamicTypeInfo should always be a pointer.");
+
   const CXXRecordDecl *RD = RegionType->getAsCXXRecordDecl();
   if (!RD || !RD->hasDefinition())
     return RuntimeDefinition();

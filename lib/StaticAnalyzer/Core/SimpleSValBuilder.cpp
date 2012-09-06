@@ -318,7 +318,9 @@ SVal SimpleSValBuilder::evalBinOpNN(ProgramStateRef state,
         return makeTruthVal(false, resultTy);
       case BO_Xor:
       case BO_Sub:
-        return makeIntVal(0, resultTy);
+        if (resultTy->isIntegralOrEnumerationType())
+          return makeIntVal(0, resultTy);
+        return evalCastFromNonLoc(makeIntVal(0, /*Unsigned=*/false), resultTy);
       case BO_Or:
       case BO_And:
         return evalCastFromNonLoc(lhs, resultTy);
@@ -916,14 +918,8 @@ SVal SimpleSValBuilder::evalBinOpLN(ProgramStateRef state,
     else if (isa<SubRegion>(region)) {
       superR = region;
       index = rhs;
-      if (const PointerType *PT = resultTy->getAs<PointerType>()) {
-        elementType = PT->getPointeeType();
-      }
-      else {
-        const ObjCObjectPointerType *OT =
-          resultTy->getAs<ObjCObjectPointerType>();
-        elementType = OT->getPointeeType();
-      }
+      if (resultTy->isAnyPointerType())
+        elementType = resultTy->getPointeeType();
     }
 
     if (NonLoc *indexV = dyn_cast<NonLoc>(&index)) {
