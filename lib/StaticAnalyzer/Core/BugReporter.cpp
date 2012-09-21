@@ -121,7 +121,8 @@ GetCurrentOrNextStmt(const ExplodedNode *N) {
 /// Recursively scan through a path and prune out calls and macros pieces
 /// that aren't needed.  Return true if afterwards the path contains
 /// "interesting stuff" which means it should be pruned from the parent path.
-bool BugReporter::RemoveUneededCalls(PathPieces &pieces, BugReport *R) {
+bool BugReporter::RemoveUneededCalls(PathPieces &pieces, BugReport *R,
+                                     PathDiagnosticCallPiece *CallWithLoc) {
   bool containsSomethingInteresting = false;
   const unsigned N = pieces.size();
   
@@ -131,6 +132,11 @@ bool BugReporter::RemoveUneededCalls(PathPieces &pieces, BugReport *R) {
     IntrusiveRefCntPtr<PathDiagnosticPiece> piece(pieces.front());
     pieces.pop_front();
     
+    // Throw away pieces with invalid locations.
+    if (piece->getKind() != PathDiagnosticPiece::Call &&
+        piece->getLocation().asLocation().isInvalid())
+      continue;
+
     switch (piece->getKind()) {
       case PathDiagnosticPiece::Call: {
         PathDiagnosticCallPiece *call = cast<PathDiagnosticCallPiece>(piece);
@@ -142,8 +148,17 @@ bool BugReporter::RemoveUneededCalls(PathPieces &pieces, BugReport *R) {
         }
         // Recursively clean out the subclass.  Keep this call around if
         // it contains any informative diagnostics.
-        if (!RemoveUneededCalls(call->path, R))
+        PathDiagnosticCallPiece *NewCallWithLoc =
+          call->getLocation().asLocation().isValid()
+            ? call : CallWithLoc;
+        
+        if (!RemoveUneededCalls(call->path, R, NewCallWithLoc))
           continue;
+
+        if (NewCallWithLoc == CallWithLoc && CallWithLoc) {
+          call->callEnter = CallWithLoc->callEnter;
+        }
+        
         containsSomethingInteresting = true;
         break;
       }
@@ -156,11 +171,10 @@ bool BugReporter::RemoveUneededCalls(PathPieces &pieces, BugReport *R) {
       }
       case PathDiagnosticPiece::Event: {
         PathDiagnosticEventPiece *event = cast<PathDiagnosticEventPiece>(piece);
+        
         // We never throw away an event, but we do throw it away wholesale
         // as part of a path if we throw the entire path away.
-        if (event->isPrunable())
-          continue;
-        containsSomethingInteresting = true;
+        containsSomethingInteresting |= !event->isPrunable();
         break;
       }
       case PathDiagnosticPiece::ControlFlow:
@@ -956,6 +970,11 @@ void EdgeBuilder::rawAddEdge(PathDiagnosticLocation NewLoc) {
   const PathDiagnosticLocation &NewLocClean = cleanUpLocation(NewLoc);
   const PathDiagnosticLocation &PrevLocClean = cleanUpLocation(PrevLoc);
 
+  if (PrevLocClean.asLocation().isInvalid()) {
+    PrevLoc = NewLoc;
+    return;
+  }
+  
   if (NewLocClean.asLocation() == PrevLocClean.asLocation())
     return;
 
@@ -1250,20 +1269,15 @@ static void GenerateExtensivePathDiagnostic(PathDiagnostic& PD,
           }
         }
        
-        const CFGBlock &Blk = *BE->getSrc();
-        const Stmt *Term = Blk.getTerminator();
-
         // Are we jumping to the head of a loop?  Add a special diagnostic.
-        if (const Stmt *Loop = BE->getDst()->getLoopTarget()) {
+        if (const Stmt *Loop = BE->getSrc()->getLoopTarget()) {
           PathDiagnosticLocation L(Loop, SM, PDB.LC);
           const CompoundStmt *CS = NULL;
 
-          if (!Term) {
-            if (const ForStmt *FS = dyn_cast<ForStmt>(Loop))
-              CS = dyn_cast<CompoundStmt>(FS->getBody());
-            else if (const WhileStmt *WS = dyn_cast<WhileStmt>(Loop))
-              CS = dyn_cast<CompoundStmt>(WS->getBody());
-          }
+          if (const ForStmt *FS = dyn_cast<ForStmt>(Loop))
+            CS = dyn_cast<CompoundStmt>(FS->getBody());
+          else if (const WhileStmt *WS = dyn_cast<WhileStmt>(Loop))
+            CS = dyn_cast<CompoundStmt>(WS->getBody());
 
           PathDiagnosticEventPiece *p =
             new PathDiagnosticEventPiece(L,
@@ -1279,15 +1293,16 @@ static void GenerateExtensivePathDiagnostic(PathDiagnostic& PD,
             EB.addEdge(BL);
           }
         }
-
-        if (Term)
+        
+        if (const Stmt *Term = BE->getSrc()->getTerminator())
           EB.addContext(Term);
 
         break;
       }
 
       if (const BlockEntrance *BE = dyn_cast<BlockEntrance>(&P)) {
-        if (const CFGStmt *S = BE->getFirstElement().getAs<CFGStmt>()) {
+        CFGElement First = BE->getFirstElement();
+        if (const CFGStmt *S = First.getAs<CFGStmt>()) {
           const Stmt *stmt = S->getStmt();
           if (IsControlFlowExpr(stmt)) {
             // Add the proper context for '&&', '||', and '?'.

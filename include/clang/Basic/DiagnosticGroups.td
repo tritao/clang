@@ -49,6 +49,7 @@ def DefaultArgSpecialMember : DiagGroup<"default-arg-special-member">;
 def GNUDesignator : DiagGroup<"gnu-designator">;
 
 def DeleteNonVirtualDtor : DiagGroup<"delete-non-virtual-dtor">;
+def AbstractFinalClass : DiagGroup<"abstract-final-class">;
 
 def DeprecatedDeclarations : DiagGroup<"deprecated-declarations">;
 def DeprecatedWritableStr : DiagGroup<"deprecated-writable-strings">;
@@ -195,7 +196,9 @@ def : DiagGroup<"synth">;
 def SizeofArrayArgument : DiagGroup<"sizeof-array-argument">;
 def StringPlusInt : DiagGroup<"string-plus-int">;
 def StrncatSize : DiagGroup<"strncat-size">;
-def TautologicalCompare : DiagGroup<"tautological-compare">;
+def TautologicalOutOfRangeCompare : DiagGroup<"tautological-constant-out-of-range-compare">;
+def TautologicalCompare : DiagGroup<"tautological-compare",
+                                    [TautologicalOutOfRangeCompare]>;
 def HeaderHygiene : DiagGroup<"header-hygiene">;
 def DuplicateDeclSpecifier : DiagGroup<"duplicate-decl-specifier">;
 
@@ -266,13 +269,11 @@ def ImplicitAtomic : DiagGroup<"implicit-atomic-properties">;
 def CustomAtomic : DiagGroup<"custom-atomic-properties">;
 def AtomicProperties : DiagGroup<"atomic-properties",
                                  [ImplicitAtomic, CustomAtomic]>;
-def AutomaticReferenceCountingABI : DiagGroup<"arc-abi">;
 def ARCUnsafeRetainedAssign : DiagGroup<"arc-unsafe-retained-assign">;
 def ARCRetainCycles : DiagGroup<"arc-retain-cycles">;
 def ARCNonPodMemAccess : DiagGroup<"arc-non-pod-memaccess">;
 def AutomaticReferenceCounting : DiagGroup<"arc",
-                                           [AutomaticReferenceCountingABI,
-                                            ARCUnsafeRetainedAssign,
+                                           [ARCUnsafeRetainedAssign,
                                             ARCRetainCycles,
                                             ARCNonPodMemAccess]>;
 def Selector : DiagGroup<"selector">;
@@ -286,6 +287,7 @@ def VexingParse : DiagGroup<"vexing-parse">;
 def VLA : DiagGroup<"vla">;
 def VolatileRegisterVar : DiagGroup<"volatile-register-var">;
 def Visibility : DiagGroup<"visibility">;
+def ZeroLengthArray : DiagGroup<"zero-length-array">;
 
 // GCC calls -Wdeprecated-writable-strings -Wwrite-strings.
 def GCCWriteStrings : DiagGroup<"write-strings" , [DeprecatedWritableStr]>;
@@ -386,9 +388,12 @@ def Most : DiagGroup<"most", [
 
 // Thread Safety warnings 
 def ThreadSafetyAttributes : DiagGroup<"thread-safety-attributes">;
-def ThreadSafetyAnalysis : DiagGroup<"thread-safety-analysis">;
-def ThreadSafety : DiagGroup<"thread-safety", 
-                             [ThreadSafetyAttributes, ThreadSafetyAnalysis]>;
+def ThreadSafetyAnalysis   : DiagGroup<"thread-safety-analysis">;
+def ThreadSafetyPrecise    : DiagGroup<"thread-safety-precise">;
+def ThreadSafety : DiagGroup<"thread-safety",
+                             [ThreadSafetyAttributes, 
+                              ThreadSafetyAnalysis,
+                              ThreadSafetyPrecise]>;
 
 // Note that putting warnings in -Wall will not disable them by default. If a
 // warning should be active _only_ when -Wall is passed in, mark it as
@@ -430,7 +435,7 @@ def C11 : DiagGroup<"c11-extensions">;
 def C99 : DiagGroup<"c99-extensions">;
 
 // A warning group for warnings about GCC extensions.
-def GNU : DiagGroup<"gnu", [GNUDesignator, VLA]>;
+def GNU : DiagGroup<"gnu", [GNUDesignator, VLA, ZeroLengthArray]>;
 // A warning group for warnings about code that clang accepts but gcc doesn't.
 def GccCompat : DiagGroup<"gcc-compat">;
 

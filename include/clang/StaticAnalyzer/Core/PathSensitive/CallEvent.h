@@ -20,6 +20,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
+#include "clang/Analysis/AnalysisContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "llvm/ADT/PointerIntPair.h"
@@ -120,8 +121,7 @@ private:
   const LocationContext *LCtx;
   llvm::PointerUnion<const Expr *, const Decl *> Origin;
 
-  // DO NOT IMPLEMENT
-  CallEvent &operator=(const CallEvent &);
+  void operator=(const CallEvent &) LLVM_DELETED_FUNCTION;
 
 protected:
   // This is user data for subclasses.
@@ -293,6 +293,9 @@ public:
   /// of some kind.
   static bool isCallStmt(const Stmt *S);
 
+  /// \brief Returns the result type of a function, method declaration.
+  static QualType getDeclaredResultType(const Decl *D);
+
   // Iterator access to formal parameters and their types.
 private:
   typedef std::const_mem_fun_t<QualType, ParmVarDecl> get_type_fun;
@@ -364,9 +367,16 @@ public:
 
   virtual RuntimeDefinition getRuntimeDefinition() const {
     const FunctionDecl *FD = getDecl();
-    // Note that hasBody() will fill FD with the definition FunctionDecl.
-    if (FD && FD->hasBody(FD))
-      return RuntimeDefinition(FD);
+    // Note that the AnalysisDeclContext will have the FunctionDecl with
+    // the definition (if one exists).
+    if (FD) {
+      AnalysisDeclContext *AD =
+        getLocationContext()->getAnalysisDeclContext()->
+        getManager()->getContext(FD);
+      if (AD->getBody())
+        return RuntimeDefinition(AD->getDecl());
+    }
+
     return RuntimeDefinition();
   }
 
@@ -549,6 +559,8 @@ public:
   }
 
   virtual const Expr *getCXXThisExpr() const;
+  
+  virtual RuntimeDefinition getRuntimeDefinition() const;
 
   virtual Kind getKind() const { return CE_CXXMember; }
 
@@ -604,6 +616,8 @@ class CXXDestructorCall : public CXXInstanceCall {
   friend class CallEventManager;
 
 protected:
+  typedef llvm::PointerIntPair<const MemRegion *, 1, bool> DtorDataTy;
+
   /// Creates an implicit destructor.
   ///
   /// \param DD The destructor that will be called.
@@ -612,10 +626,10 @@ protected:
   /// \param St The path-sensitive state at this point in the program.
   /// \param LCtx The location context at this point in the program.
   CXXDestructorCall(const CXXDestructorDecl *DD, const Stmt *Trigger,
-                    const MemRegion *Target, ProgramStateRef St,
-                    const LocationContext *LCtx)
+                    const MemRegion *Target, bool IsBaseDestructor,
+                    ProgramStateRef St, const LocationContext *LCtx)
     : CXXInstanceCall(DD, St, LCtx) {
-    Data = Target;
+    Data = DtorDataTy(Target, IsBaseDestructor).getOpaqueValue();
     Location = Trigger->getLocEnd();
   }
 
@@ -626,8 +640,15 @@ public:
   virtual SourceRange getSourceRange() const { return Location; }
   virtual unsigned getNumArgs() const { return 0; }
 
+  virtual RuntimeDefinition getRuntimeDefinition() const;
+
   /// \brief Returns the value of the implicit 'this' object.
   virtual SVal getCXXThisVal() const;
+
+  /// Returns true if this is a call to a base class destructor.
+  bool isBaseDestructor() const {
+    return DtorDataTy::getFromOpaqueValue(Data).getInt();
+  }
 
   virtual Kind getKind() const { return CE_CXXDestructor; }
 
@@ -882,6 +903,13 @@ class CallEventManager {
     return new (allocate()) T(A1, A2, A3, St, LCtx);
   }
 
+  template <typename T, typename Arg1, typename Arg2, typename Arg3,
+            typename Arg4>
+  T *create(Arg1 A1, Arg2 A2, Arg3 A3, Arg4 A4, ProgramStateRef St,
+            const LocationContext *LCtx) {
+    return new (allocate()) T(A1, A2, A3, A4, St, LCtx);
+  }
+
 public:
   CallEventManager(llvm::BumpPtrAllocator &alloc) : Alloc(alloc) {}
 
@@ -908,9 +936,9 @@ public:
 
   CallEventRef<CXXDestructorCall>
   getCXXDestructorCall(const CXXDestructorDecl *DD, const Stmt *Trigger,
-                       const MemRegion *Target, ProgramStateRef State,
-                       const LocationContext *LCtx) {
-    return create<CXXDestructorCall>(DD, Trigger, Target, State, LCtx);
+                       const MemRegion *Target, bool IsBase,
+                       ProgramStateRef State, const LocationContext *LCtx) {
+    return create<CXXDestructorCall>(DD, Trigger, Target, IsBase, State, LCtx);
   }
 
   CallEventRef<CXXAllocatorCall>

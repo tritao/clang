@@ -68,8 +68,7 @@ ExprEngine::ExprEngine(AnalysisManager &mgr, bool gcEnabled,
     svalBuilder(StateMgr.getSValBuilder()),
     EntryNode(NULL),
     currStmt(NULL), currStmtIdx(0), currBldrCtx(0),
-    NSExceptionII(NULL), NSExceptionInstanceRaiseSelectors(NULL),
-    RaiseSel(GetNullarySelector("raise", getContext())),
+    ObjCNoRet(mgr.getASTContext()),
     ObjCGCEnabled(gcEnabled), BR(mgr, *this),
     VisitedCallees(VisitedCalleesIn)
 {
@@ -81,7 +80,6 @@ ExprEngine::ExprEngine(AnalysisManager &mgr, bool gcEnabled,
 
 ExprEngine::~ExprEngine() {
   BR.FlushReports();
-  delete [] NSExceptionInstanceRaiseSelectors;
 }
 
 //===----------------------------------------------------------------------===//
@@ -446,7 +444,7 @@ void ExprEngine::ProcessAutomaticObjDtor(const CFGAutomaticObjDtor Dtor,
   Loc dest = state->getLValue(varDecl, Pred->getLocationContext());
 
   VisitCXXDestructor(varType, cast<loc::MemRegionVal>(dest).getRegion(),
-                     Dtor.getTriggerStmt(), Pred, Dst);
+                     Dtor.getTriggerStmt(), /*IsBase=*/false, Pred, Dst);
 }
 
 void ExprEngine::ProcessBaseDtor(const CFGBaseDtor D,
@@ -464,7 +462,7 @@ void ExprEngine::ProcessBaseDtor(const CFGBaseDtor D,
   SVal BaseVal = getStoreManager().evalDerivedToBase(ThisVal, BaseTy);
 
   VisitCXXDestructor(BaseTy, cast<loc::MemRegionVal>(BaseVal).getRegion(),
-                     CurDtor->getBody(), Pred, Dst);
+                     CurDtor->getBody(), /*IsBase=*/true, Pred, Dst);
 }
 
 void ExprEngine::ProcessMemberDtor(const CFGMemberDtor D,
@@ -480,7 +478,7 @@ void ExprEngine::ProcessMemberDtor(const CFGMemberDtor D,
 
   VisitCXXDestructor(Member->getType(),
                      cast<loc::MemRegionVal>(FieldVal).getRegion(),
-                     CurDtor->getBody(), Pred, Dst);
+                     CurDtor->getBody(), /*IsBase=*/false, Pred, Dst);
 }
 
 void ExprEngine::ProcessTemporaryDtor(const CFGTemporaryDtor D,
@@ -526,6 +524,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CXXNoexceptExprClass:
     case Stmt::PackExpansionExprClass:
     case Stmt::SubstNonTypeTemplateParmPackExprClass:
+    case Stmt::FunctionParmPackExprClass:
     case Stmt::SEHTryStmtClass:
     case Stmt::SEHExceptStmtClass:
     case Stmt::LambdaExprClass:

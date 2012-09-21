@@ -578,8 +578,8 @@ struct QualifierInfo {
 
 private:
   // Copy constructor and copy assignment are disabled.
-  QualifierInfo(const QualifierInfo&);
-  QualifierInfo& operator=(const QualifierInfo&);
+  QualifierInfo(const QualifierInfo&) LLVM_DELETED_FUNCTION;
+  QualifierInfo& operator=(const QualifierInfo&) LLVM_DELETED_FUNCTION;
 };
 
 /// \brief Represents a ValueDecl that came out of a declarator.
@@ -712,7 +712,7 @@ public:
   typedef clang::StorageClass StorageClass;
 
   /// getStorageClassSpecifierString - Return the string used to
-  /// specify the storage class \arg SC.
+  /// specify the storage class \p SC.
   ///
   /// It is illegal to call this function with SC == None.
   static const char *getStorageClassSpecifierString(StorageClass SC);
