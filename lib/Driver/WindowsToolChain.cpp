@@ -64,6 +64,10 @@ Tool &Windows::SelectTool(const Compilation &C, const JobAction &JA,
     case Action::CompileJobClass:
       T = new tools::Clang(*this); break;
     case Action::AssembleJobClass:
+      if (getTriple().getArch() == llvm::Triple::cil) {
+        T = new tools::visualstudio::ILAsm(*this);
+        break;
+      }
       if (!UseIntegratedAs && getTriple().getEnvironment() == llvm::Triple::MachO)
         T = new tools::darwin::Assemble(*this);
       else

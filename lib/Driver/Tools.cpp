@@ -6077,6 +6077,37 @@ void dragonfly::Link::ConstructJob(Compilation &C, const JobAction &JA,
   C.addCommand(new Command(JA, *this, Exec, CmdArgs));
 }
 
+void visualstudio::ILAsm::ConstructJob(Compilation &C, const JobAction &JA,
+                                       const InputInfo &Output,
+                                       const InputInfoList &Inputs,
+                                       const ArgList &Args,
+                                       const char *LinkingOutput) const {
+  ArgStringList CmdArgs;
+
+  CmdArgs.push_back("/nologo");
+  CmdArgs.push_back("/quiet");
+
+  if (Output.isFilename()) {
+    CmdArgs.push_back(Args.MakeArgString(std::string("/output=") +
+                                         Output.getFilename()));
+  } else {
+    assert(Output.isNothing() && "Invalid output.");
+  }
+
+  Args.AddAllArgValues(CmdArgs, options::OPT_a);
+
+  // Add filenames immediately.
+  for (InputInfoList::const_iterator
+       it = Inputs.begin(), ie = Inputs.end(); it != ie; ++it) {
+    if (it->isFilename())
+      CmdArgs.push_back(it->getFilename());
+  }
+
+  const char *Exec =
+    Args.MakeArgString(getToolChain().GetProgramPath("ilasm.exe"));
+  C.addCommand(new Command(JA, *this, Exec, CmdArgs));
+}
+
 void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                       const InputInfo &Output,
                                       const InputInfoList &Inputs,
