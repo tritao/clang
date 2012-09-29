@@ -1808,6 +1808,10 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
         TC = new toolchains::TCEToolChain(*this, Target);
         break;
       }
+      if (Target.getArchName() == "cil") {
+        TC = new toolchains::Windows(*this, Target);
+        break;
+      }
 
       TC = new toolchains::Generic_GCC(*this, Target, Args);
       break;
