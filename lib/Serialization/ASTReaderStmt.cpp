@@ -1526,6 +1526,11 @@ void ASTStmtReader::VisitSEHTryStmt(SEHTryStmt *S) {
   S->Children[SEHTryStmt::HANDLER] = Reader.ReadSubStmt();
 }
 
+void ASTStmtReader::VisitSEHLeaveStmt(SEHLeaveStmt *S) {
+  VisitStmt(S);
+  S->LeaveLoc = ReadSourceLocation(Record, Idx);
+}
+
 //===----------------------------------------------------------------------===//
 // CUDA Expressions and Statements
 //===----------------------------------------------------------------------===//
@@ -1995,6 +2000,9 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       break;
     case STMT_SEH_TRY:
       S = new (Context) SEHTryStmt(Empty);
+      break;
+    case STMT_SEH_LEAVE:
+      S = new (Context) SEHLeaveStmt(Empty);
       break;
     case STMT_CXX_CATCH:
       S = new (Context) CXXCatchStmt(Empty);

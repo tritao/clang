@@ -337,7 +337,9 @@ StmtResult Parser::ParseSEHTryBlockCommon(SourceLocation TryLoc) {
   if(Tok.isNot(tok::l_brace))
     return StmtError(Diag(Tok,diag::err_expected_lbrace));
 
-  StmtResult TryBlock(ParseCompoundStatement());
+  // Use the SEHTryScope to handle __leave as a statement.
+  unsigned ScopeFlags = Scope::DeclScope | Scope::SEHTryScope;
+  StmtResult TryBlock(ParseCompoundStatement(false /*isStmtExpr*/, ScopeFlags));
   if(TryBlock.isInvalid())
     return TryBlock;
 
