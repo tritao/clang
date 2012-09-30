@@ -2567,6 +2567,53 @@ public:
 } // end anonymous namespace
 
 namespace {
+// CLR (Common Language Runtime, .NET / Mono) target
+class CLRTargetInfo : public TargetInfo {
+protected:
+  void getDefaultFeatures(llvm::StringMap<bool> &Features) const {
+  }
+
+  void getTargetDefines(const LangOptions &Opts,
+                                MacroBuilder &Builder) const {
+    //if (Opts.CPlusPlusCLI)
+      Builder.defineMacro("__cplusplus_cli", "200509L");
+  }
+  
+  void getTargetBuiltins(const Builtin::Info *&Records,
+                                 unsigned &NumRecords) const {
+  }
+
+  BuiltinVaListKind getBuiltinVaListKind() const {
+    return CharPtrBuiltinVaList;
+  }
+
+  const char *getClobbers() const {
+    return NULL;
+  }
+
+  bool validateAsmConstraint(const char *&Name,
+                                 TargetInfo::ConstraintInfo &info) const {
+    return false;
+  }
+
+  void getGCCRegNames(const char * const *&Names,
+                                     unsigned &NumNames) const {
+    Names = NULL;
+    NumNames = 0;
+  }
+
+  void getGCCRegAliases(const GCCRegAlias *&Aliases,
+                                     unsigned &NumAliases) const {
+    Aliases = NULL;
+    NumAliases = 0;
+  }
+
+public:
+  CLRTargetInfo(const std::string &triple) : TargetInfo(triple) {}
+};
+} // end anonymous namespace.
+
+namespace {
 // x86-32 Cygwin target
 class CygwinX86_32TargetInfo : public X86_32TargetInfo {
 public:
@@ -4356,6 +4403,9 @@ static TargetInfo *AllocateTarget(const std::string &T) {
 
   case llvm::Triple::tce:
     return new TCETargetInfo(T);
+
+  case llvm::Triple::cil:
+    return new CLRTargetInfo(T);
 
   case llvm::Triple::x86:
     if (Triple.isOSDarwin())
