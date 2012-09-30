@@ -1298,6 +1298,11 @@ static void addExceptionArgs(const ArgList &Args, types::ID InputType,
       shouldUseExceptionTablesForObjCExceptions(objcRuntime, Triple);
   }
 
+  if (Triple.getArch() == llvm::Triple::cil) {
+    ExceptionsEnabled = false;
+    ShouldUseExceptionTables = false;
+  }
+
   if (types::isCXX(InputType)) {
     bool CXXExceptionsEnabled = ExceptionsEnabled;
 
