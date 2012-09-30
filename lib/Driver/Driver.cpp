@@ -1809,6 +1809,9 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
         break;
       }
       if (Target.getArchName() == "cil") {
+        llvm::Triple DefaultTriple(LLVM_DEFAULT_TARGET_TRIPLE);
+        if (Target.getOS() == llvm::Triple::UnknownOS)
+            Target.setOS(DefaultTriple.getOS());
         TC = new toolchains::Windows(*this, Target);
         break;
       }
