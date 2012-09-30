@@ -2466,6 +2466,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       KernelOrKext)
     CmdArgs.push_back("-fno-use-cxa-atexit");
 
+  if (getToolChain().getTriple().getOS() == llvm::Triple::Win32) {
+    CmdArgs.push_back("-cxx-abi");
+    CmdArgs.push_back("microsoft");
+  }
+
   // -fms-extensions=0 is default.
   if (Args.hasFlag(options::OPT_fms_extensions, options::OPT_fno_ms_extensions,
                    getToolChain().getTriple().getOS() == llvm::Triple::Win32))
