@@ -82,6 +82,8 @@ Tool &Windows::SelectTool(const Compilation &C, const JobAction &JA,
 }
 
 bool Windows::IsIntegratedAssemblerDefault() const {
+  if (getTriple().getArch() == llvm::Triple::cil)
+    return false;
   return true;
 }
 
