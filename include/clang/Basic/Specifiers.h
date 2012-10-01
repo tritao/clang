@@ -16,6 +16,8 @@
 #ifndef LLVM_CLANG_BASIC_SPECIFIERS_H
 #define LLVM_CLANG_BASIC_SPECIFIERS_H
 
+#include "llvm/ADT/StringRef.h"
+
 namespace clang {
   /// \brief Specifies the width of a type, e.g., short, long, or long long.
   enum TypeSpecifierWidth {
@@ -62,6 +64,13 @@ namespace clang {
     TST_auto,         // C++0x auto
     TST_unknown_anytype, // __unknown_anytype extension
     TST_atomic,       // C11 _Atomic
+    // C++/CX extended types
+    TST_ref_class,
+    TST_ref_struct,
+    TST_value_class,
+    TST_value_struct,
+    TST_interface_class,
+    TST_interface_struct,
     TST_error         // erroneous type
   };
   
@@ -80,8 +89,26 @@ namespace clang {
     AS_public,
     AS_protected,
     AS_private,
+    //C++/CLI extensions.
+    AS_internal,
+    AS_protected_public,
+    AS_protected_private,
     AS_none
   };
+
+  /// GetAccessSpecifierName - Converts from an access specifier enum to
+  /// its string representation.
+  inline llvm::StringRef GetAccessSpecifierName(AccessSpecifier AS) {
+    switch(AS) {
+    case AS_none:      return llvm::StringRef();
+    case AS_public:    return "public";
+    case AS_protected: return "protected";;
+    case AS_private:   return "private";
+    case AS_internal:  return "internal";
+    case AS_protected_private: return "protected private";
+    case AS_protected_public:  return "protected public";
+    }
+  }
 
   /// \brief The categorization of expression values, currently following the
   /// C++11 scheme.
