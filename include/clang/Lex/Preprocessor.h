@@ -1300,6 +1300,9 @@ private:
   void HandleImportDirective(SourceLocation HashLoc, Token &Tok);
   void HandleMicrosoftImportDirective(Token &Tok);
 
+  // C++/CLI #using directive.
+  void HandleUsingDirective(SourceLocation HashLoc, Token &Tok);
+
   // Macro handling.
   void HandleDefineDirective(Token &Tok);
   void HandleUndefDirective(Token &Tok);

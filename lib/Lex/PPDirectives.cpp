@@ -681,6 +681,11 @@ TryAgain:
       // Handle -imacros.
       return HandleIncludeMacrosDirective(SavedHash.getLocation(), Result); 
 
+    // C++/CLI 10.3 - Importing types from assemblies.
+    case tok::pp_using:
+      return HandleUsingDirective(SavedHash.getLocation(), Result);
+      break;
+
     // C99 6.10.3 - Macro Replacement.
     case tok::pp_define:
       return HandleDefineDirective(Result);
@@ -1564,6 +1569,103 @@ void Preprocessor::HandleImportDirective(SourceLocation HashLoc,
     Diag(ImportTok, diag::ext_pp_import_directive);
   }
   return HandleIncludeDirective(HashLoc, ImportTok, 0, true);
+}
+
+/// HandleUsingDirective - Implements \#using.
+///
+void Preprocessor::HandleUsingDirective(SourceLocation HashLoc,
+                                        Token &UsingTok) {
+  if (!LangOpts.CPlusPlusCLI) {
+    Diag(UsingTok, diag::ext_pp_using_directive);
+  }
+
+  Token FilenameTok;
+  CurPPLexer->LexIncludeFilename(FilenameTok);
+
+  // Reserve a buffer to get the spelling.
+  SmallString<128> FilenameBuffer;
+  StringRef Filename;
+  SourceLocation End;
+  SourceLocation CharEnd; // the end of this directive, in characters
+  
+  switch (FilenameTok.getKind()) {
+  case tok::eod:
+    // If the token kind is EOD, the error has already been diagnosed.
+    return;
+
+  case tok::angle_string_literal:
+  case tok::string_literal:
+    Filename = getSpelling(FilenameTok, FilenameBuffer);
+    End = FilenameTok.getLocation();
+    // For an angled include, point the end location at the closing '>'.
+    if (FilenameTok.is(tok::angle_string_literal))
+      End = End.getLocWithOffset(Filename.size()-1);
+    CharEnd = End.getLocWithOffset(Filename.size());
+    break;
+
+  case tok::less:
+    // This could be a <foo/bar.h> file coming from a macro expansion.  In this
+    // case, glue the tokens together into FilenameBuffer and interpret those.
+    FilenameBuffer.push_back('<');
+    if (ConcatenateIncludeName(FilenameBuffer, End))
+      return;   // Found <eod> but no ">"?  Diagnostic already emitted.
+    Filename = FilenameBuffer.str();
+    CharEnd = getLocForEndOfToken(End);
+    break;
+  default:
+    Diag(FilenameTok.getLocation(), diag::err_pp_expects_filename);
+    DiscardUntilEndOfDirective();
+    return;
+  }
+
+  StringRef OriginalFilename = Filename;
+  bool isAngled =
+    GetIncludeFilenameSpelling(FilenameTok.getLocation(), Filename);
+  // If GetIncludeFilenameSpelling set the start ptr to null, there was an
+  // error.
+  if (Filename.empty()) {
+    DiscardUntilEndOfDirective();
+    return;
+  }
+
+  // Verify that there is nothing after the filename, other than EOD.  Note that
+  // we allow macros that expand to nothing after the filename, because this
+  // falls into the category of "#include pp-tokens new-line" specified in
+  // C99 6.10.2p4.
+  CheckEndOfDirective(UsingTok.getIdentifierInfo()->getNameStart(), true);
+
+  if (Callbacks) {
+    //Callbacks->UsingDirective(HashLoc, UsingTok, Filename, isAngled, 0, End, 0, 0);
+  }
+
+  // Search include directories.
+  const DirectoryLookup *CurDir;
+  SmallString<1024> SearchPath;
+  SmallString<1024> RelativePath;
+  
+  const FileEntry *File = LookupFile(
+      Filename, isAngled, 0, CurDir,
+      Callbacks ? &SearchPath : NULL, Callbacks ? &RelativePath : NULL, 0);
+
+  // If the file is still not found, just go with the vanilla diagnostic
+  if (!File) {
+    Diag(FilenameTok, diag::err_pp_file_not_found) << Filename;
+    return;
+  }
+
+  SrcMgr::CharacteristicKind FileCharacter =
+    SourceMgr.getFileCharacteristic(FilenameTok.getLocation());
+
+  // Look up the file, create a File ID for it.
+  SourceLocation IncludePos = End;
+  // If the filename string was the result of macro expansions, set the include
+  // position on the file where it will be included and after the expansions.
+  if (IncludePos.isMacroID())
+    IncludePos = SourceMgr.getExpansionRange(IncludePos).second;
+  FileID FID = SourceMgr.createFileID(File, IncludePos, FileCharacter);
+  assert(!FID.isInvalid() && "Expected valid file ID");
+
+
 }
 
 /// HandleIncludeMacrosDirective - The -imacros command line option turns into a
