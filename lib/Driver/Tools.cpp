@@ -2505,6 +2505,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back(Args.MakeArgString("-fmsc-version=" + msc_ver));
   }
 
+  // C++/CX language extensions
+  if (Args.hasArg(options::OPT_fms_cx_extensions))
+      CmdArgs.push_back("-fms-cx-extensions");
+
+  // C++/CLI language extensions
+  if (Args.hasArg(options::OPT_fms_cli_extensions) ||
+                  getToolChain().getTriple().getArch() == llvm::Triple::cil)
+      CmdArgs.push_back("-fms-cli-extensions");
 
   // -fborland-extensions=0 is default.
   if (Args.hasFlag(options::OPT_fborland_extensions,

@@ -40,6 +40,7 @@ def m_Group               : OptionGroup<"<m group>">, Group<CompileOnly_Group>;
 def m_x86_Features_Group  : OptionGroup<"<m x86 features group>">, Group<m_Group>;
 def m_hexagon_Features_Group  : OptionGroup<"<m hexagon features group>">, Group<m_Group>;
 def opencl_Group          : OptionGroup<"<opencl group>">;
+def cxx_cli_Group         : OptionGroup<"<C++/CLI group>">;
 def u_Group               : OptionGroup<"<u group>">;
 
 def pedantic_Group        : OptionGroup<"<pedantic group>">,
@@ -463,6 +464,10 @@ def fmsc_version : Joined<"-fmsc-version=">, Group<f_Group>, Flags<[CC1Option]>,
 def fdelayed_template_parsing : Flag<"-fdelayed-template-parsing">, Group<f_Group>,
   HelpText<"Parse templated function definitions at the end of the "
            "translation unit ">,  Flags<[CC1Option]>;
+def fms_cx_extensions : Flag<"-fms-cx-extensions">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Enables the C++/CX language extensions">;
+def fms_cli_extensions : Flag<"-fms-cli-extensions">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Enables the C++/CLI language extensions">;
 def fmodule_cache_path : Separate<"-fmodule-cache-path">, Group<i_Group>, 
   Flags<[NoForward,CC1Option]>, MetaVarName<"<directory>">,
   HelpText<"Specify the module cache path">;
