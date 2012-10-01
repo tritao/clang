@@ -247,6 +247,9 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE(15, '_', 'p', __private_macro);
 
   CASE(16, '_', 'i', __include_macros);
+
+  // C++/CLI extensions
+  CASE(5, 'u', 'i', using);
 #undef CASE
 #undef HASH
   }
