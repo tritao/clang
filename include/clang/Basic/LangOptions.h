@@ -85,6 +85,10 @@ public:
   void set##Name(Type Value) { Name = static_cast<unsigned>(Value); }  
 #include "clang/Basic/LangOptions.def"
   
+  bool isCPlusPlusCXorCLI() const {
+    return CPlusPlusCX || CPlusPlusCLI;
+  }
+
   bool isSignedOverflowDefined() const {
     return getSignedOverflowBehavior() == SOB_Defined;
   }
