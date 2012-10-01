@@ -102,5 +102,8 @@ OVERLOADED_OPERATOR_MULTI(Subscript      , "[]"                       , false, t
 // resolution machinery for it.
 OVERLOADED_OPERATOR_MULTI(Conditional    , "?"                        , false, true , false)
 
+// C++/CLI operators
+OVERLOADED_OPERATOR(GC_New               , "gcnew", kw_gcnew          , true , true , false)
+
 #undef OVERLOADED_OPERATOR_MULTI
 #undef OVERLOADED_OPERATOR
