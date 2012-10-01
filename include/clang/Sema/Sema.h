@@ -3758,6 +3758,18 @@ public:
   ExprResult BuildCXXNoexceptExpr(SourceLocation KeyLoc, Expr *Operand,
                                   SourceLocation RParen);
 
+  /// ActOnCXXCLIGCNew - Parsed a C++/CLI 'gcnew' expression.
+  ExprResult ActOnCXXCLIGCNew(SourceLocation StartLoc,
+                         Declarator &D,
+                         Expr *Initializer);
+  ExprResult BuildCXXCLIGCNew(SourceLocation StartLoc,
+                         QualType AllocType,
+                         TypeSourceInfo *AllocTypeInfo,
+                         SourceRange DirectInitRange,
+                         Expr *Initializer);
+  bool CheckCXXCLIAllocatedType(QualType AllocType, SourceLocation Loc,
+                          SourceRange R);
+
   /// ActOnUnaryTypeTrait - Parsed one of the unary type trait support
   /// pseudo-functions.
   ExprResult ActOnUnaryTypeTrait(UnaryTypeTrait OTT,

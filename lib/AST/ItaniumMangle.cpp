@@ -1649,6 +1649,7 @@ CXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO, unsigned Arity) {
   case OO_Conditional: Out << "qu"; break;
 
   case OO_None:
+  case OO_GC_New:
   case NUM_OVERLOADED_OPERATORS:
     llvm_unreachable("Not an overloaded operator");
   }
@@ -2379,6 +2380,7 @@ recurse:
   case Expr::ImplicitValueInitExprClass:
   case Expr::ParenListExprClass:
   case Expr::LambdaExprClass:
+  case Expr::CXXCLIGCNewExprClass:
     llvm_unreachable("unexpected statement kind");
 
   // FIXME: invent manglings for all these.

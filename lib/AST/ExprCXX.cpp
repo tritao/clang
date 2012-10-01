@@ -139,6 +139,44 @@ SourceLocation CXXNewExpr::getEndLoc() const {
   llvm_unreachable("bogus initialization style");
 }
 
+// CXXCLIGCNewExpr
+CXXCLIGCNewExpr::CXXCLIGCNewExpr(ASTContext &C,
+             CXXNewExpr::InitializationStyle initializationStyle,
+             Expr *initializer, QualType ty, TypeSourceInfo *allocatedTypeInfo,
+             SourceLocation startLoc, SourceRange directInitRange)
+  : Expr(CXXCLIGCNewExprClass, ty, VK_RValue, OK_Ordinary,
+         ty->isDependentType(), ty->isDependentType(),
+         ty->isInstantiationDependentType(),
+         ty->containsUnexpandedParameterPack()),
+    Initializer(0), AllocatedTypeInfo(allocatedTypeInfo),
+    StartLoc(startLoc), DirectInitRange(directInitRange) {
+  assert((initializer != 0 || initializationStyle == CXXNewExpr::NoInit) &&
+         "Only NoInit can have no initializer.");
+  StoredInitializationStyle = initializer ? initializationStyle + 1 : 0;
+
+  if (initializer) {
+    //if (initializer->isInstantiationDependent())
+    //  ExprBits.InstantiationDependent = true;
+
+    //if (initializer->containsUnexpandedParameterPack())
+    //  ExprBits.ContainsUnexpandedParameterPack = true;
+
+    Initializer = initializer;
+  }
+}
+
+SourceLocation CXXCLIGCNewExpr::getEndLoc() const {
+  switch (getInitializationStyle()) {
+  case CXXNewExpr::NoInit:
+    return AllocatedTypeInfo->getTypeLoc().getEndLoc();
+  case CXXNewExpr::CallInit:
+    return DirectInitRange.getEnd();
+  case CXXNewExpr::ListInit:
+    return getInitializer()->getSourceRange().getEnd();
+  }
+  llvm_unreachable("bogus initialization style");
+}
+
 // CXXDeleteExpr
 QualType CXXDeleteExpr::getDestroyedType() const {
   const Expr *Arg = getArgument();

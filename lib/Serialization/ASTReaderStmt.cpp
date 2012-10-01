@@ -1264,6 +1264,14 @@ void ASTStmtReader::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   E->Loc = ReadSourceLocation(Record, Idx);
 }
 
+void ASTStmtReader::VisitCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
+  VisitExpr(E);
+  E->StoredInitializationStyle = Record[Idx++];
+  E->AllocatedTypeInfo = GetTypeSourceInfo(Record, Idx);
+  E->StartLoc = ReadSourceLocation(Record, Idx);
+  E->DirectInitRange = ReadSourceRange(Record, Idx);
+}
+
 void ASTStmtReader::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   VisitExpr(E);
 
@@ -2115,6 +2123,11 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case EXPR_CXX_DELETE:
       S = new (Context) CXXDeleteExpr(Empty);
       break;
+
+    case EXPR_CXXCLI_GCNEW:
+      S = new (Context) CXXCLIGCNewExpr(Empty);
+      break;
+
     case EXPR_CXX_PSEUDO_DESTRUCTOR:
       S = new (Context) CXXPseudoDestructorExpr(Empty);
       break;

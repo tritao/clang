@@ -1020,6 +1020,167 @@ Sema::ActOnCXXNew(SourceLocation StartLoc, bool UseGlobal,
                      TypeContainsAuto);
 }
 
+/// \brief Parsed a C++/CLI 'gcnew' expression (std 5.3.4).
+///
+/// E.g.:
+/// @code gcnew int @endcode
+/// or
+/// @code gcnew System::Int32(23) @endcode
+///
+/// \param StartLoc The first location of the expression.
+/// \param D The type to be allocated, as well as array dimensions.
+/// \param Initializer The initializing expression or initializer-list, or null
+///   if there is none.
+ExprResult
+Sema::ActOnCXXCLIGCNew(SourceLocation StartLoc,
+                         Declarator &D,
+                         Expr *Initializer) {
+  TypeSourceInfo *TInfo = GetTypeForDeclarator(D, /*Scope=*/0);
+  QualType AllocType = TInfo->getType();
+  if (D.isInvalidType())
+    return ExprError();
+
+  SourceRange DirectInitRange;
+  if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer))
+    DirectInitRange = List->getSourceRange();
+
+  return BuildCXXCLIGCNew(StartLoc,
+                     AllocType,
+                     TInfo,
+                     DirectInitRange,
+                     Initializer);
+}
+
+ExprResult
+Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
+                  QualType AllocType,
+                  TypeSourceInfo *AllocTypeInfo,
+                  SourceRange DirectInitRange,
+                  Expr *Initializer) {
+  SourceRange TypeRange = AllocTypeInfo->getTypeLoc().getSourceRange();
+
+  CXXNewExpr::InitializationStyle initStyle;
+  if (DirectInitRange.isValid()) {
+    assert(Initializer && "Have parens but no initializer.");
+    initStyle = CXXNewExpr::CallInit;
+  } else if (Initializer && isa<InitListExpr>(Initializer))
+    initStyle = CXXNewExpr::ListInit;
+  else {
+    // In template instantiation, the initializer could be a CXXDefaultArgExpr
+    // unwrapped from a CXXConstructExpr that was implicitly built. There is no
+    // particularly sane way we can handle this (especially since it can even
+    // occur for array new), so we throw the initializer away and have it be
+    // rebuilt.
+    if (Initializer && isa<CXXDefaultArgExpr>(Initializer))
+      Initializer = 0;
+    assert((!Initializer || isa<ImplicitValueInitExpr>(Initializer) ||
+            isa<CXXConstructExpr>(Initializer)) &&
+           "Initializer expression that cannot have been implicitly created.");
+    initStyle = CXXNewExpr::NoInit;
+  }
+
+  Expr **Inits = &Initializer;
+  unsigned NumInits = Initializer ? 1 : 0;
+  if (initStyle == CXXNewExpr::CallInit) {
+    if (ParenListExpr *List = dyn_cast<ParenListExpr>(Initializer)) {
+      Inits = List->getExprs();
+      NumInits = List->getNumExprs();
+    }
+  }
+
+  if (CheckCXXCLIAllocatedType(AllocType, TypeRange.getBegin(), TypeRange))
+    return ExprError();
+
+  if (initStyle == CXXNewExpr::ListInit && isStdInitializerList(AllocType, 0)) {
+    Diag(AllocTypeInfo->getTypeLoc().getBeginLoc(),
+         diag::warn_dangling_std_initializer_list)
+        << /*at end of FE*/0 << Inits[0]->getSourceRange();
+  }
+
+  QualType ResultType = Context.getHandleType(AllocType);
+
+  QualType InitType = AllocType;
+#if 0
+    if (InitListExpr *ILE = dyn_cast_or_null<InitListExpr>(Initializer)) {
+      // We do the initialization typechecking against the array type
+      // corresponding to the number of initializers + 1 (to also check
+      // default-initialization).
+      unsigned NumElements = ILE->getNumInits() + 1;
+      InitType = Context.getConstantArrayType(AllocType,
+          llvm::APInt(Context.getTypeSize(Context.getSizeType()), NumElements),
+                                              ArrayType::Normal, 0);
+    }
+  }
+
+  if (!AllocType->isDependentType() &&
+      !Expr::hasAnyTypeDependentArguments(
+        llvm::makeArrayRef(Inits, NumInits))) {
+    // C++11 [expr.new]p15:
+    //   A new-expression that creates an object of type T initializes that
+    //   object as follows:
+    InitializationKind Kind
+    //     - If the new-initializer is omitted, the object is default-
+    //       initialized (8.5); if no initialization is performed,
+    //       the object has indeterminate value
+      = initStyle == CXXNewExpr::NoInit
+          ? InitializationKind::CreateDefault(TypeRange.getBegin())
+    //     - Otherwise, the new-initializer is interpreted according to the
+    //       initialization rules of 8.5 for direct-initialization.
+          : initStyle == CXXNewExpr::ListInit
+              ? InitializationKind::CreateDirectList(TypeRange.getBegin())
+              : InitializationKind::CreateDirect(TypeRange.getBegin(),
+                                                 DirectInitRange.getBegin(),
+                                                 DirectInitRange.getEnd());
+
+    InitializedEntity Entity
+      = InitializedEntity::InitializeNew(StartLoc, InitType);
+    InitializationSequence InitSeq(*this, Entity, Kind, Inits, NumInits);
+    ExprResult FullInit = InitSeq.Perform(*this, Entity, Kind,
+                                          MultiExprArg(Inits, NumInits));
+    if (FullInit.isInvalid())
+      return ExprError();
+
+    // FullInit is our initializer; strip off CXXBindTemporaryExprs, because
+    // we don't want the initialized object to be destructed.
+    if (CXXBindTemporaryExpr *Binder =
+            dyn_cast_or_null<CXXBindTemporaryExpr>(FullInit.get()))
+      FullInit = Owned(Binder->getSubExpr());
+
+    Initializer = FullInit.take();
+  }
+#endif
+
+  return Owned(new (Context) CXXCLIGCNewExpr(Context, initStyle, Initializer,
+                                        ResultType, AllocTypeInfo,
+                                        StartLoc, DirectInitRange));
+}
+
+/// \brief Checks that a type is suitable as the allocated type
+/// in a gcnew-expression. For this it has to be a managed type,
+/// (reference or value type) or convertible to one (builtin).
+bool Sema::CheckCXXCLIAllocatedType(QualType AllocType, SourceLocation Loc,
+                              SourceRange R) {
+  if (AllocType->isFunctionType())
+    return Diag(Loc, diag::err_bad_new_type) << AllocType << 0 << R;
+  else if (AllocType->isReferenceType())
+    return Diag(Loc, diag::err_bad_new_type) << AllocType << 1 << R;
+  else if (!AllocType->isDependentType() &&
+           RequireCompleteType(Loc, AllocType, diag::err_new_incomplete_type,R))
+    return true;
+  else if (RequireNonAbstractType(Loc, AllocType,
+                                  diag::err_allocation_of_abstract_type))
+    return true;
+  else if (AllocType->isVariablyModifiedType())
+    return Diag(Loc, diag::err_variably_modified_new_type) << AllocType;
+  else if (unsigned AddressSpace = AllocType.getAddressSpace())
+    return Diag(Loc, diag::err_address_space_qualified_new)
+      << AllocType.getUnqualifiedType() << AddressSpace;
+  
+  // TODO: Check if the type is managed.
+  
+  return false;
+}
+
 static bool isLegalArrayNewInitializer(CXXNewExpr::InitializationStyle Style,
                                        Expr *Init) {
   if (!Init)

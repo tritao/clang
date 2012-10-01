@@ -758,6 +758,14 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       Bldr.addNodes(Dst);
       break;
     }
+
+    case Stmt::CXXCLIGCNewExprClass: {
+      Bldr.takeNodes(Pred);
+      const CXXCLIGCNewExpr *NE = cast<CXXCLIGCNewExpr>(S);
+      //VisitCXXCLIGCNewExpr(NE, Pred, Dst);
+      Bldr.addNodes(Dst);
+      break;
+    }
       // FIXME: ChooseExpr is really a constant.  We need to fix
       //        the CFG do not model them as explicit control-flow.
 

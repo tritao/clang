@@ -998,7 +998,7 @@ typedef SmallVector<Token, 4> CachedTokens;
 /// This is intended to be a small value object.
 struct DeclaratorChunk {
   enum {
-    Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren
+    Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
   } Kind;
 
   /// Loc - The place where this type was defined.
@@ -1451,7 +1451,8 @@ public:
     TrailingReturnContext, // C++11 trailing-type-specifier.
     TemplateTypeArgContext, // Template type argument.
     AliasDeclContext,    // C++11 alias-declaration.
-    AliasTemplateContext // C++11 alias-declaration template.
+    AliasTemplateContext,// C++11 alias-declaration template.
+    CXXCLIGCNewContext   // C++/CLI GC new declaration
   };
 
 private:
@@ -1619,6 +1620,7 @@ public:
     case ObjCResultContext:
     case TemplateParamContext:
     case CXXNewContext:
+    case CXXCLIGCNewContext:
     case CXXCatchContext:
     case ObjCCatchContext:
     case BlockLiteralContext:
@@ -1649,6 +1651,7 @@ public:
 
     case TypeNameContext:
     case CXXNewContext:
+    case CXXCLIGCNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case ObjCParameterContext:
@@ -1700,6 +1703,7 @@ public:
     case ObjCCatchContext:
     case TypeNameContext:
     case CXXNewContext:
+    case CXXCLIGCNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case BlockLiteralContext:

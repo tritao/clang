@@ -1256,6 +1256,15 @@ void ASTStmtWriter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   Code = serialization::EXPR_CXX_DELETE;
 }
 
+void ASTStmtWriter::VisitCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
+  VisitExpr(E);
+  Record.push_back(E->StoredInitializationStyle);
+  Writer.AddTypeSourceInfo(E->getAllocatedTypeSourceInfo(), Record);
+  Writer.AddSourceLocation(E->getStartLoc(), Record);
+  Writer.AddSourceRange(E->getDirectInitRange(), Record);
+  Code = serialization::EXPR_CXXCLI_GCNEW;
+}
+
 void ASTStmtWriter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   VisitExpr(E);
 

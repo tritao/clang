@@ -2696,6 +2696,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case CXXBindTemporaryExprClass:
   case BlockExprClass:
   case CUDAKernelCallExprClass:
+  case CXXCLIGCNewExprClass:
     // These always have a side-effect.
     return true;
 

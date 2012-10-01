@@ -1451,6 +1451,22 @@ void StmtPrinter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   PrintExpr(E->getArgument());
 }
 
+void StmtPrinter::VisitCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
+  OS << "gcnew ";
+  std::string TypeS;
+  E->getAllocatedType().getAsStringInternal(TypeS, Policy);
+  OS << TypeS;
+
+  CXXNewExpr::InitializationStyle InitStyle = E->getInitializationStyle();
+  if (InitStyle) {
+    if (InitStyle == CXXNewExpr::CallInit)
+      OS << "(";
+    PrintExpr(E->getInitializer());
+    if (InitStyle == CXXNewExpr::CallInit)
+      OS << ")";
+  }
+}
+
 void StmtPrinter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   PrintExpr(E->getBase());
   if (E->isArrow())

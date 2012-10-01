@@ -1171,6 +1171,8 @@ namespace clang {
       EXPR_CXX_DELETE,            // CXXDeleteExpr
       EXPR_CXX_PSEUDO_DESTRUCTOR, // CXXPseudoDestructorExpr
       
+      EXPR_CXXCLI_GCNEW,          // CXXCLIGCNewExpr
+
       EXPR_EXPR_WITH_CLEANUPS,    // ExprWithCleanups
       
       EXPR_CXX_DEPENDENT_SCOPE_MEMBER,   // CXXDependentScopeMemberExpr

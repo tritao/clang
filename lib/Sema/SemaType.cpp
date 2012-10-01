@@ -1878,6 +1878,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       Error = 11; // Function return type
       break;
     case Declarator::TypeNameContext:
+    case Declarator::CXXCLIGCNewContext:
       Error = 12; // Generic
       break;
     case Declarator::FileContext:
@@ -1955,6 +1956,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case Declarator::TypeNameContext:
     case Declarator::TemplateParamContext:
     case Declarator::CXXNewContext:
+    case Declarator::CXXCLIGCNewContext:
     case Declarator::CXXCatchContext:
     case Declarator::ObjCCatchContext:
     case Declarator::TemplateTypeArgContext:
@@ -2793,6 +2795,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     case Declarator::ObjCResultContext:     // FIXME: special diagnostic here?
     case Declarator::TypeNameContext:
     case Declarator::CXXNewContext:
+    case Declarator::CXXCLIGCNewContext:
     case Declarator::AliasDeclContext:
     case Declarator::AliasTemplateContext:
     case Declarator::MemberContext:

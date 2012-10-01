@@ -509,6 +509,7 @@ static Stmt::StmtClass DecodeOperatorCall(const CXXOperatorCallExpr *S,
   case OO_Delete:
   case OO_Array_New:
   case OO_Array_Delete:
+  case OO_GC_New:
   case OO_Arrow:
   case OO_Call:
   case OO_Conditional:
@@ -845,6 +846,12 @@ void StmtProfiler::VisitCXXNewExpr(const CXXNewExpr *S) {
   ID.AddInteger(S->getNumPlacementArgs());
   ID.AddBoolean(S->isGlobalNew());
   ID.AddBoolean(S->isParenTypeId());
+  ID.AddInteger(S->getInitializationStyle());
+}
+
+void StmtProfiler::VisitCXXCLIGCNewExpr(const CXXCLIGCNewExpr *S) {
+  VisitExpr(S);
+  VisitType(S->getAllocatedType());
   ID.AddInteger(S->getInitializationStyle());
 }
 

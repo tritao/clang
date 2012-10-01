@@ -2011,6 +2011,22 @@ public:
                                     Operand);
   }
 
+  /// \brief Build a new C++/CLI "gcnew" expression.
+  ///
+  /// By default, performs semantic analysis to build the new expression.
+  /// Subclasses may override this routine to provide different behavior.
+  ExprResult RebuildCXXCLIGCNewExpr(SourceLocation StartLoc,
+                               QualType AllocatedType,
+                               TypeSourceInfo *AllocatedTypeInfo,
+                               SourceRange DirectInitRange,
+                               Expr *Initializer) {
+    return getSema().BuildCXXCLIGCNew(StartLoc,
+                                 AllocatedType,
+                                 AllocatedTypeInfo,
+                                 DirectInitRange,
+                                 Initializer);
+  }
+
   /// \brief Build a new unary type trait expression.
   ///
   /// By default, performs semantic analysis to build the new expression.
@@ -7350,6 +7366,38 @@ TreeTransform<Derived>::TransformCXXDeleteExpr(CXXDeleteExpr *E) {
                                            E->isGlobalDelete(),
                                            E->isArrayForm(),
                                            Operand.get());
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
+  // Transform the type that we're allocating
+  TypeSourceInfo *AllocTypeInfo
+    = getDerived().TransformType(E->getAllocatedTypeSourceInfo());
+  if (!AllocTypeInfo)
+    return ExprError();
+
+  // Transform the initializer (if any).
+  Expr *OldInit = E->getInitializer();
+  ExprResult NewInit;
+  if (OldInit)
+    NewInit = getDerived().TransformExpr(OldInit);
+  if (NewInit.isInvalid())
+    return ExprError();
+
+  if (!getDerived().AlwaysRebuild() &&
+      AllocTypeInfo == E->getAllocatedTypeSourceInfo() &&
+      NewInit.get() == OldInit) {
+    return SemaRef.Owned(E);
+  }
+
+  QualType AllocType = AllocTypeInfo->getType();
+
+  return getDerived().RebuildCXXCLIGCNewExpr(E->getLocStart(),
+                                        AllocType,
+                                        AllocTypeInfo,
+                                        E->getDirectInitRange(),
+                                        NewInit.take());
 }
 
 template<typename Derived>

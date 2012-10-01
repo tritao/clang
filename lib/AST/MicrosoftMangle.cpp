@@ -682,6 +682,14 @@ void MicrosoftCXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO,
     Diags.Report(Loc, DiagID);
     break;
   }
+
+  case OO_GC_New: {
+    DiagnosticsEngine &Diags = Context.getDiags();
+    unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+      "cannot mangle the 'gcnew' operator yet");
+    Diags.Report(Loc, DiagID);
+    break;
+  }
     
   case OO_None:
   case NUM_OVERLOADED_OPERATORS:
