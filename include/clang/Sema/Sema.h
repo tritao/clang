@@ -234,6 +234,12 @@ public:
   /// VisContext - Manages the stack for \#pragma GCC visibility.
   void *VisContext; // Really a "PragmaVisStack*"
 
+  /// \brief Flag indicating if Sema is building a recovery call expression.
+  ///
+  /// This flag is used to avoid building recovery call expressions
+  /// if Sema is already doing so, which would cause infinite recursions.
+  bool IsBuildingRecoveryCallExpr;
+
   /// ExprNeedsCleanups - True if the current evaluation context
   /// requires cleanups to be run at its conclusion.
   bool ExprNeedsCleanups;
@@ -2299,6 +2305,10 @@ public:
   /// its protocols.
   ObjCPropertyDecl *LookupPropertyDecl(const ObjCContainerDecl *CDecl,
                                        IdentifierInfo *II);
+  
+  /// PropertyIfSetterOrGetter - Looks up the property if named declaration
+  /// is a setter or getter method backing a property.
+  ObjCPropertyDecl *PropertyIfSetterOrGetter(NamedDecl *D);
 
   /// Called by ActOnProperty to handle \@property declarations in
   /// class extensions.
@@ -2692,7 +2702,8 @@ public:
 
   void EmitDeprecationWarning(NamedDecl *D, StringRef Message,
                               SourceLocation Loc,
-                              const ObjCInterfaceDecl *UnknownObjCClass=0);
+                              const ObjCInterfaceDecl *UnknownObjCClass,
+                              const ObjCPropertyDecl  *ObjCProperty);
 
   void HandleDelayedDeprecationCheck(sema::DelayedDiagnostic &DD, Decl *Ctx);
 
@@ -2716,7 +2727,10 @@ public:
   void PushExpressionEvaluationContext(ExpressionEvaluationContext NewContext,
                                        Decl *LambdaContextDecl = 0,
                                        bool IsDecltype = false);
-
+  enum ReuseLambdaContextDecl_t { ReuseLambdaContextDecl };
+  void PushExpressionEvaluationContext(ExpressionEvaluationContext NewContext,
+                                       ReuseLambdaContextDecl_t,
+                                       bool IsDecltype = false);
   void PopExpressionEvaluationContext();
 
   void DiscardCleanupsInEvaluationContext();
@@ -7300,6 +7314,15 @@ public:
                                    bool IsDecltype = false)
     : Actions(Actions) {
     Actions.PushExpressionEvaluationContext(NewContext, LambdaContextDecl,
+                                            IsDecltype);
+  }
+  EnterExpressionEvaluationContext(Sema &Actions,
+                                   Sema::ExpressionEvaluationContext NewContext,
+                                   Sema::ReuseLambdaContextDecl_t,
+                                   bool IsDecltype = false)
+    : Actions(Actions) {
+    Actions.PushExpressionEvaluationContext(NewContext, 
+                                            Sema::ReuseLambdaContextDecl,
                                             IsDecltype);
   }
 

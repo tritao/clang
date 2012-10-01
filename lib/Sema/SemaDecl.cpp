@@ -5210,11 +5210,12 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       NewFD->setImplicitlyInline();
     }
 
-    // if this is a method defined in an __interface, set pure
-    // (isVirtual will already return true)
-    if (CXXRecordDecl *Parent = dyn_cast<CXXRecordDecl>(
-        NewFD->getDeclContext())) {
-      if (Parent->getTagKind() == TTK_Interface)
+    // If this is a method defined in an __interface, and is not a constructor
+    // or an overloaded operator, then set the pure flag (isVirtual will already
+    // return true).
+    if (const CXXRecordDecl *Parent =
+          dyn_cast<CXXRecordDecl>(NewFD->getDeclContext())) {
+      if (Parent->isInterface() && cast<CXXMethodDecl>(NewFD)->isUserProvided())
         NewFD->setPure(true);
     }
 
@@ -6587,6 +6588,21 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
 
     if (VDecl->hasAttr<BlocksAttr>())
       checkRetainCycles(VDecl, Init);
+
+    // It is safe to assign a weak reference into a strong variable.
+    // Although this code can still have problems:
+    //   id x = self.weakProp;
+    //   id y = self.weakProp;
+    // we do not warn to warn spuriously when 'x' and 'y' are on separate
+    // paths through the function. This should be revisited if
+    // -Wrepeated-use-of-weak is made flow-sensitive.
+    if (VDecl->getType().getObjCLifetime() == Qualifiers::OCL_Strong) {
+      DiagnosticsEngine::Level Level =
+        Diags.getDiagnosticLevel(diag::warn_arc_repeated_use_of_weak,
+                                 Init->getLocStart());
+      if (Level != DiagnosticsEngine::Ignored)
+        getCurFunction()->markSafeWeakUse(Init);
+    }
   }
 
   Init = MaybeCreateExprWithCleanups(Init);
@@ -7250,7 +7266,7 @@ void Sema::ActOnDocumentableDecls(Decl **Group, unsigned NumDecls) {
     // the lookahead in the lexer: we've consumed the semicolon and looked
     // ahead through comments.
     for (unsigned i = 0; i != NumDecls; ++i)
-      Context.getCommentForDecl(Group[i]);
+      Context.getCommentForDecl(Group[i], &PP);
   }
 }
 

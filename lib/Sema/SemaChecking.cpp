@@ -1198,10 +1198,19 @@ Sema::SemaBuiltinAtomicOverloaded(ExprResult TheCallResult) {
   // concrete integer type we should convert to is.
   unsigned NewBuiltinID = BuiltinIndices[BuiltinIndex][SizeIndex];
   const char *NewBuiltinName = Context.BuiltinInfo.GetName(NewBuiltinID);
-  IdentifierInfo *NewBuiltinII = PP.getIdentifierInfo(NewBuiltinName);
-  FunctionDecl *NewBuiltinDecl =
-    cast<FunctionDecl>(LazilyCreateBuiltin(NewBuiltinII, NewBuiltinID,
-                                           TUScope, false, DRE->getLocStart()));
+  FunctionDecl *NewBuiltinDecl;
+  if (NewBuiltinID == BuiltinID)
+    NewBuiltinDecl = FDecl;
+  else {
+    // Perform builtin lookup to avoid redeclaring it.
+    DeclarationName DN(&Context.Idents.get(NewBuiltinName));
+    LookupResult Res(*this, DN, DRE->getLocStart(), LookupOrdinaryName);
+    LookupName(Res, TUScope, /*AllowBuiltinCreation=*/true);
+    assert(Res.getFoundDecl());
+    NewBuiltinDecl = dyn_cast<FunctionDecl>(Res.getFoundDecl());
+    if (NewBuiltinDecl == 0)
+      return ExprError();
+  }
 
   // The first argument --- the pointer --- has a fixed type; we
   // deduce the types of the rest of the arguments accordingly.  Walk
@@ -5630,9 +5639,19 @@ void Sema::checkUnsafeExprAssigns(SourceLocation Loc,
   
   if (LHSType.isNull())
     LHSType = LHS->getType();
+
+  Qualifiers::ObjCLifetime LT = LHSType.getObjCLifetime();
+
+  if (LT == Qualifiers::OCL_Weak) {
+    DiagnosticsEngine::Level Level =
+      Diags.getDiagnosticLevel(diag::warn_arc_repeated_use_of_weak, Loc);
+    if (Level != DiagnosticsEngine::Ignored)
+      getCurFunction()->markSafeWeakUse(LHS);
+  }
+
   if (checkUnsafeAssigns(Loc, LHSType, RHS))
     return;
-  Qualifiers::ObjCLifetime LT = LHSType.getObjCLifetime();
+
   // FIXME. Check for other life times.
   if (LT != Qualifiers::OCL_None)
     return;

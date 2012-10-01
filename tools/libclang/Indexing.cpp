@@ -68,10 +68,11 @@ public:
                                   const Token &IncludeTok,
                                   StringRef FileName,
                                   bool IsAngled,
+                                  CharSourceRange FilenameRange,
                                   const FileEntry *File,
-                                  SourceLocation EndLoc,
                                   StringRef SearchPath,
-                                  StringRef RelativePath) {
+                                  StringRef RelativePath,
+                                  const Module *Imported) {
     bool isImport = (IncludeTok.is(tok::identifier) &&
             IncludeTok.getIdentifierInfo()->getPPKeywordID() == tok::pp_import);
     IndexCtx.ppIncludedFile(HashLoc, FileName, File, isImport, IsAngled);
@@ -538,6 +539,8 @@ static void clang_indexTranslationUnit_Impl(void *UserData) {
   ASTUnit *Unit = static_cast<ASTUnit *>(TU->TUData);
   if (!Unit)
     return;
+
+  ASTUnit::ConcurrencyCheck Check(*Unit);
 
   FileManager &FileMgr = Unit->getFileManager();
 

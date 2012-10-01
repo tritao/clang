@@ -389,10 +389,11 @@ void PreprocessingRecord::InclusionDirective(
     const clang::Token &IncludeTok,
     StringRef FileName,
     bool IsAngled,
+    CharSourceRange FilenameRange,
     const FileEntry *File,
-    clang::SourceLocation EndLoc,
     StringRef SearchPath,
-    StringRef RelativePath) {
+    StringRef RelativePath,
+    const Module *Imported) {
   InclusionDirective::InclusionKind Kind = InclusionDirective::Include;
   
   switch (IncludeTok.getIdentifierInfo()->getPPKeywordID()) {
@@ -419,7 +420,16 @@ void PreprocessingRecord::InclusionDirective(
   default:
     llvm_unreachable("Unknown include directive kind");
   }
-  
+
+  SourceLocation EndLoc;
+  if (!IsAngled) {
+    EndLoc = FilenameRange.getBegin();
+  } else {
+    EndLoc = FilenameRange.getEnd();
+    if (FilenameRange.isCharRange())
+      EndLoc = EndLoc.getLocWithOffset(-1); // the InclusionDirective expects
+                                            // a token range.
+  }
   clang::InclusionDirective *ID
     = new (*this) clang::InclusionDirective(*this, Kind, FileName, !IsAngled, 
                                             File, SourceRange(HashLoc, EndLoc));

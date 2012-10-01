@@ -20,7 +20,9 @@
 
 using namespace clang;
 
-typedef Stmt *(*FunctionFarmer)(ASTContext &C, const FunctionDecl *D);
+//===----------------------------------------------------------------------===//
+// Helper creation functions for constructing faux ASTs.
+//===----------------------------------------------------------------------===//
 
 static bool isDispatchBlock(QualType Ty) {
   // Is it a block pointer?
@@ -38,6 +40,72 @@ static bool isDispatchBlock(QualType Ty) {
 
   return true;
 }
+
+namespace {
+class ASTMaker {
+public:
+  ASTMaker(ASTContext &C) : C(C) {}
+  
+  /// Create a new BinaryOperator representing a simple assignment.
+  BinaryOperator *makeAssignment(const Expr *LHS, const Expr *RHS, QualType Ty);
+  
+  /// Create a new DeclRefExpr for the referenced variable.
+  DeclRefExpr *makeDeclRefExpr(const VarDecl *D);
+  
+  /// Create a new UnaryOperator representing a dereference.
+  UnaryOperator *makeDereference(const Expr *Arg, QualType Ty);
+  
+  /// Create an implicit cast for an integer conversion.
+  ImplicitCastExpr *makeIntegralCast(const Expr *Arg, QualType Ty);
+  
+  // Create an implicit cast for lvalue-to-rvaluate conversions.
+  ImplicitCastExpr *makeLvalueToRvalue(const Expr *Arg, QualType Ty);
+  
+private:
+  ASTContext &C;
+};
+}
+
+BinaryOperator *ASTMaker::makeAssignment(const Expr *LHS, const Expr *RHS,
+                                         QualType Ty) {
+ return new (C) BinaryOperator(const_cast<Expr*>(LHS), const_cast<Expr*>(RHS),
+                               BO_Assign, Ty, VK_RValue,
+                               OK_Ordinary, SourceLocation());
+}
+
+DeclRefExpr *ASTMaker::makeDeclRefExpr(const VarDecl *D) {
+  DeclRefExpr *DR =
+    DeclRefExpr::Create(/* Ctx = */ C,
+                        /* QualifierLoc = */ NestedNameSpecifierLoc(),
+                        /* TemplateKWLoc = */ SourceLocation(),
+                        /* D = */ const_cast<VarDecl*>(D),
+                        /* isEnclosingLocal = */ false,
+                        /* NameLoc = */ SourceLocation(),
+                        /* T = */ D->getType(),
+                        /* VK = */ VK_LValue);
+  return DR;
+}
+
+UnaryOperator *ASTMaker::makeDereference(const Expr *Arg, QualType Ty) {
+  return new (C) UnaryOperator(const_cast<Expr*>(Arg), UO_Deref, Ty,
+                               VK_LValue, OK_Ordinary, SourceLocation());
+}
+
+ImplicitCastExpr *ASTMaker::makeLvalueToRvalue(const Expr *Arg, QualType Ty) {
+  return ImplicitCastExpr::Create(C, Ty, CK_LValueToRValue,
+                                  const_cast<Expr*>(Arg), 0, VK_RValue);
+}
+
+ImplicitCastExpr *ASTMaker::makeIntegralCast(const Expr *Arg, QualType Ty) {
+  return ImplicitCastExpr::Create(C, Ty, CK_IntegralCast,
+                                  const_cast<Expr*>(Arg), 0, VK_RValue);
+}
+
+//===----------------------------------------------------------------------===//
+// Creation functions for faux ASTs.
+//===----------------------------------------------------------------------===//
+
+typedef Stmt *(*FunctionFarmer)(ASTContext &C, const FunctionDecl *D);
 
 /// Create a fake body for dispatch_once.
 static Stmt *create_dispatch_once(ASTContext &C, const FunctionDecl *D) {
@@ -71,13 +139,11 @@ static Stmt *create_dispatch_once(ASTContext &C, const FunctionDecl *D) {
   //  }
   // }
   
+  ASTMaker M(C);
+  
   // (1) Create the call.
-  DeclRefExpr *DR = DeclRefExpr::CreateEmpty(C, false, false, false, false);
-  DR->setDecl(const_cast<ParmVarDecl*>(Block));
-  DR->setType(Ty);
-  DR->setValueKind(VK_LValue);
-  ImplicitCastExpr *ICE = ImplicitCastExpr::Create(C, Ty, CK_LValueToRValue,
-                                                   DR, 0, VK_RValue);
+  DeclRefExpr *DR = M.makeDeclRefExpr(Block);
+  ImplicitCastExpr *ICE = M.makeLvalueToRvalue(DR, Ty);
   CallExpr *CE = new (C) CallExpr(C, ICE, ArrayRef<Expr*>(), C.VoidTy,
                                   VK_RValue, SourceLocation());
 
@@ -85,22 +151,15 @@ static Stmt *create_dispatch_once(ASTContext &C, const FunctionDecl *D) {
   IntegerLiteral *IL =
     IntegerLiteral::Create(C, llvm::APInt(C.getTypeSize(C.IntTy), (uint64_t) 1),
                            C.IntTy, SourceLocation());
-  ICE = ImplicitCastExpr::Create(C, PredicateTy, CK_IntegralCast, IL, 0,
-                                 VK_RValue);
-  DR = DeclRefExpr::CreateEmpty(C, false, false, false, false);
-  DR->setDecl(const_cast<ParmVarDecl*>(Predicate));
-  DR->setType(PredicateQPtrTy);
-  DR->setValueKind(VK_LValue);
-  ImplicitCastExpr *LValToRval =
-    ImplicitCastExpr::Create(C, PredicateQPtrTy, CK_LValueToRValue, DR,
-                             0, VK_RValue);
-  UnaryOperator *UO = new (C) UnaryOperator(LValToRval, UO_Deref, PredicateTy,
-                                            VK_LValue, OK_Ordinary,
-                                            SourceLocation());
-  BinaryOperator *B = new (C) BinaryOperator(UO, ICE, BO_Assign,
-                                             PredicateTy, VK_RValue,
-                                             OK_Ordinary,
-                                             SourceLocation());
+  BinaryOperator *B =
+    M.makeAssignment(
+       M.makeDereference(
+          M.makeLvalueToRvalue(
+            M.makeDeclRefExpr(Predicate), PredicateQPtrTy),
+            PredicateTy),
+       M.makeIntegralCast(IL, PredicateTy),
+       PredicateTy);
+  
   // (3) Create the compound statement.
   Stmt *Stmts[2];
   Stmts[0] = B;
@@ -109,26 +168,23 @@ static Stmt *create_dispatch_once(ASTContext &C, const FunctionDecl *D) {
                                           SourceLocation());
   
   // (4) Create the 'if' condition.
-  DR = DeclRefExpr::CreateEmpty(C, false, false, false, false);
-  DR->setDecl(const_cast<ParmVarDecl*>(Predicate));
-  DR->setType(PredicateQPtrTy);
-  DR->setValueKind(VK_LValue);
-  LValToRval = ImplicitCastExpr::Create(C, PredicateQPtrTy, CK_LValueToRValue,
-                                        DR, 0, VK_RValue);
-  UO = new (C) UnaryOperator(LValToRval, UO_Deref, PredicateTy,
-                             VK_LValue, OK_Ordinary,
-                             SourceLocation());
-  LValToRval = ImplicitCastExpr::Create(C, PredicateTy, CK_LValueToRValue,
-                                        UO, 0, VK_RValue);
-  UO = new (C) UnaryOperator(LValToRval, UO_LNot, C.IntTy,
-                             VK_RValue, OK_Ordinary, SourceLocation());
+  ImplicitCastExpr *LValToRval =
+    M.makeLvalueToRvalue(
+      M.makeDereference(
+        M.makeLvalueToRvalue(
+          M.makeDeclRefExpr(Predicate),
+          PredicateQPtrTy),
+        PredicateTy),
+    PredicateTy);
+  
+  UnaryOperator *UO = new (C) UnaryOperator(LValToRval, UO_LNot, C.IntTy,
+                                           VK_RValue, OK_Ordinary,
+                                           SourceLocation());
   
   // (5) Create the 'if' statement.
   IfStmt *If = new (C) IfStmt(C, SourceLocation(), 0, UO, CS);
   return If;
 }
-
-  
 
 /// Create a fake body for dispatch_sync.
 static Stmt *create_dispatch_sync(ASTContext &C, const FunctionDecl *D) {
@@ -141,20 +197,17 @@ static Stmt *create_dispatch_sync(ASTContext &C, const FunctionDecl *D) {
   QualType Ty = PV->getType();
   if (!isDispatchBlock(Ty))
     return 0;
-
+  
   // Everything checks out.  Create a fake body that just calls the block.
   // This is basically just an AST dump of:
   //
   // void dispatch_sync(dispatch_queue_t queue, void (^block)(void)) {
   //   block();
   // }
-  //
-  DeclRefExpr *DR = DeclRefExpr::CreateEmpty(C, false, false, false, false);
-  DR->setDecl(const_cast<ParmVarDecl*>(PV));
-  DR->setType(Ty);
-  DR->setValueKind(VK_LValue);
-  ImplicitCastExpr *ICE = ImplicitCastExpr::Create(C, Ty, CK_LValueToRValue,
-                                                   DR, 0, VK_RValue);
+  //  
+  ASTMaker M(C);
+  DeclRefExpr *DR = M.makeDeclRefExpr(PV);
+  ImplicitCastExpr *ICE = M.makeLvalueToRvalue(DR, Ty);
   CallExpr *CE = new (C) CallExpr(C, ICE, ArrayRef<Expr*>(), C.VoidTy,
                                   VK_RValue, SourceLocation());
   return CE;

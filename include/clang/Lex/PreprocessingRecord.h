@@ -599,10 +599,11 @@ namespace clang {
                                     const Token &IncludeTok,
                                     StringRef FileName,
                                     bool IsAngled,
+                                    CharSourceRange FilenameRange,
                                     const FileEntry *File,
-                                    SourceLocation EndLoc,
                                     StringRef SearchPath,
-                                    StringRef RelativePath);
+                                    StringRef RelativePath,
+                                    const Module *Imported);
     virtual void If(SourceLocation Loc, SourceRange ConditionRange);
     virtual void Elif(SourceLocation Loc, SourceRange ConditionRange,
                       SourceLocation IfLoc);

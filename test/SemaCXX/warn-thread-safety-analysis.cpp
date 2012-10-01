@@ -64,6 +64,7 @@ void beginNoWarnOnWrites() EXCLUSIVE_LOCK_FUNCTION("*");
 void endNoWarnOnWrites()   UNLOCK_FUNCTION("*");
 
 
+// For testing handling of smart pointers.
 template<class T>
 class SmartPtr {
 public:
@@ -78,6 +79,15 @@ public:
 private:
   T* ptr_;
 };
+
+
+// For testing destructor calls and cleanup.
+class MyString {
+public:
+  MyString(const char* s);
+  ~MyString();
+};
+
 
 
 Mutex sls_mu;
@@ -3250,12 +3260,6 @@ void Base::bar(Inner* i) {
 
 namespace TrylockWithCleanups {
 
-class MyString {
-public:
-  MyString(const char* s);
-  ~MyString();
-};
-
 struct Foo {
   Mutex mu_;
   int a GUARDED_BY(mu_);
@@ -3460,6 +3464,7 @@ public:
 };
 
 void exitNow() __attribute__((noreturn));
+void exitDestruct(const MyString& ms) __attribute__((noreturn));
 
 Mutex fatalmu_;
 
@@ -3480,6 +3485,10 @@ void test3() EXCLUSIVE_LOCKS_REQUIRED(fatalmu_) {
   else {
     FemmeFatale femme;
   }
+}
+
+void test4() EXCLUSIVE_LOCKS_REQUIRED(fatalmu_) {
+  exitDestruct("foo");
 }
 
 }   // end namespace UnreachableExitTest
@@ -3514,4 +3523,83 @@ void derivedFun(Derived *d) EXCLUSIVE_LOCKS_REQUIRED(d->getMutex()) {
 }
 
 }  // end namespace VirtualMethodCanonicalizationTest
+
+
+namespace TemplateFunctionParamRemapTest {
+
+template <class T>
+struct Cell {
+  T dummy_;
+  Mutex* mu_;
+};
+
+class Foo {
+public:
+  template <class T>
+  void elr(Cell<T>* c) __attribute__((exclusive_locks_required(c->mu_)));
+
+  void test();
+};
+
+template<class T>
+void Foo::elr(Cell<T>* c1) { }
+
+void Foo::test() {
+  Cell<int> cell;
+  elr(&cell); // \
+    // expected-warning {{calling function 'elr' requires exclusive lock on 'cell.mu_'}}
+}
+
+
+template<class T>
+void globalELR(Cell<T>* c) __attribute__((exclusive_locks_required(c->mu_)));
+
+template<class T>
+void globalELR(Cell<T>* c1) { }
+
+void globalTest() {
+  Cell<int> cell;
+  globalELR(&cell); // \
+    // expected-warning {{calling function 'globalELR' requires exclusive lock on 'cell.mu_'}}
+}
+
+
+template<class T>
+void globalELR2(Cell<T>* c) __attribute__((exclusive_locks_required(c->mu_)));
+
+// second declaration
+template<class T>
+void globalELR2(Cell<T>* c2);
+
+template<class T>
+void globalELR2(Cell<T>* c3) { }
+
+// re-declaration after definition
+template<class T>
+void globalELR2(Cell<T>* c4);
+
+void globalTest2() {
+  Cell<int> cell;
+  globalELR2(&cell); // \
+    // expected-warning {{calling function 'globalELR2' requires exclusive lock on 'cell.mu_'}}
+}
+
+
+template<class T>
+class FooT {
+public:
+  void elr(Cell<T>* c) __attribute__((exclusive_locks_required(c->mu_)));
+};
+
+template<class T>
+void FooT<T>::elr(Cell<T>* c1) { }
+
+void testFooT() {
+  Cell<int> cell;
+  FooT<int> foo;
+  foo.elr(&cell); // \
+    // expected-warning {{calling function 'elr' requires exclusive lock on 'cell.mu_'}}
+}
+
+}  // end namespace TemplateFunctionParamRemapTest
 

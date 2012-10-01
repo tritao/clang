@@ -1806,6 +1806,11 @@ public:
 /// until it reaches a TypedefType or a non-sugared type.
 template <> const TypedefType *Type::getAs() const;
 
+/// \brief This will check for a TemplateSpecializationType by removing any
+/// existing sugar until it reaches a TemplateSpecializationType or a
+/// non-sugared type.
+template <> const TemplateSpecializationType *Type::getAs() const;
+
 // We can do canonical leaf types faster, because we don't have to
 // worry about preserving child type decoration.
 #define TYPE(Class, Base)
@@ -3080,9 +3085,9 @@ public:
 
   // FIXME: Remove the string version.
   void printExceptionSpecification(std::string &S, 
-                                   PrintingPolicy Policy) const;
+                                   const PrintingPolicy &Policy) const;
   void printExceptionSpecification(raw_ostream &OS, 
-                                   PrintingPolicy Policy) const;
+                                   const PrintingPolicy &Policy) const;
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == FunctionProto;

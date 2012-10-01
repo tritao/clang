@@ -61,9 +61,14 @@ def DeprecatedImplementations :DiagGroup<"deprecated-implementations">;
 def : DiagGroup<"disabled-optimization">;
 def : DiagGroup<"discard-qual">;
 def : DiagGroup<"div-by-zero">;
+
 def DocumentationHTML : DiagGroup<"documentation-html">;
 def DocumentationPedantic : DiagGroup<"documentation-pedantic">;
-def Documentation : DiagGroup<"documentation", [DocumentationHTML]>;
+def DocumentationDeprecatedSync : DiagGroup<"documentation-deprecated-sync">;
+def Documentation : DiagGroup<"documentation",
+                              [DocumentationHTML,
+                               DocumentationDeprecatedSync]>;
+
 def EmptyBody : DiagGroup<"empty-body">;
 def ExtraTokens : DiagGroup<"extra-tokens">;
 def CXX11ExtraSemi : DiagGroup<"c++11-extra-semi">;
@@ -138,7 +143,8 @@ def : DiagGroup<"missing-noreturn">;
 def MultiChar : DiagGroup<"multichar">;
 def : DiagGroup<"nested-externs">;
 def : DiagGroup<"newline-eof">;
-def LongLong : DiagGroup<"long-long">;
+def CXX11LongLong : DiagGroup<"c++11-long-long">;
+def LongLong : DiagGroup<"long-long", [CXX11LongLong]>;
 def MismatchedTags : DiagGroup<"mismatched-tags">;
 def MissingFieldInitializers : DiagGroup<"missing-field-initializers">;
 def ModuleBuild : DiagGroup<"module-build">;
@@ -276,6 +282,9 @@ def AutomaticReferenceCounting : DiagGroup<"arc",
                                            [ARCUnsafeRetainedAssign,
                                             ARCRetainCycles,
                                             ARCNonPodMemAccess]>;
+def ARCRepeatedUseOfWeakMaybe : DiagGroup<"arc-maybe-repeated-use-of-weak">;
+def ARCRepeatedUseOfWeak : DiagGroup<"arc-repeated-use-of-weak",
+                                     [ARCRepeatedUseOfWeakMaybe]>;
 def Selector : DiagGroup<"selector">;
 def Protocol : DiagGroup<"protocol">;
 def SuperSubClassMismatch : DiagGroup<"super-class-method-mismatch">;
@@ -423,7 +432,8 @@ def NonGCC : DiagGroup<"non-gcc",
 
 // A warning group for warnings about using C++11 features as extensions in
 // earlier C++ versions.
-def CXX11 : DiagGroup<"c++11-extensions", [CXX11ExtraSemi]>;
+def CXX11 : DiagGroup<"c++11-extensions", [CXX11ExtraSemi, CXX11LongLong]>;
+
 def : DiagGroup<"c++0x-extensions", [CXX11]>;
 def DelegatingCtorCycles :
   DiagGroup<"delegating-ctor-cycles">;
