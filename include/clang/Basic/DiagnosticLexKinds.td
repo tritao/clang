@@ -243,6 +243,8 @@ def ext_pp_import_directive : Extension<"#import is a language extension">,
 def err_pp_import_directive_ms : Error<
   "#import of type library is an unsupported Microsoft feature">;
 
+def ext_pp_using_directive : Extension<"#using is a language extension">;
+
 def ext_pp_ident_directive : Extension<"#ident is a language extension">;
 def ext_pp_include_next_directive : Extension<
   "#include_next is a language extension">;

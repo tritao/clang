@@ -754,7 +754,23 @@ def err_seh___finally_block : Error<
 
 def err_seh___try_block : Error<
   "%0 only allowed in __try block">;
-  
+
+// C++/CLI Language Diagnostics.
+def err_cli_expected_kw_in_for_each : Error<
+  "expected 'in' keyword in 'for each' statement specifier">;
+
+def ext_cli_member_keyword : ExtWarn<
+  "'%0' keyword is a C++/CLI extension">/*, InGroup<CXXCLI>*/;
+
+def err_cli_invalid_access_specifiers : Error<
+ "invalid access specifier combination of '%0' and '%1'">;
+
+def err_cx_invalid_class_access_specifier : Error<
+ "invalid access specifier '%0'">;
+
+def err_cx_invalid_nested_class_access_specifier : Error<
+ "access specifiers not allowed in nested classes / structs">;
+
 } // end of Parse Issue category.
 
 let CategoryName = "Modules Issue" in {
