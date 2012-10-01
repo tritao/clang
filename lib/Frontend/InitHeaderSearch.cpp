@@ -41,6 +41,7 @@ class InitHeaderSearch {
   typedef std::vector<std::pair<IncludeDirGroup,
                       DirectoryLookup> >::const_iterator path_iterator;
   std::vector<std::pair<std::string, bool> > SystemHeaderPrefixes;
+  std::vector<DirectoryLookup> AssemblyDirs;
   HeaderSearch &Headers;
   bool Verbose;
   std::string IncludeSysroot;
@@ -457,6 +458,21 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
 
   case llvm::Triple::Linux:
   case llvm::Triple::Win32:
+
+    if (triple.getArch() == llvm::Triple::cil || Lang.CPlusPlusCLI) {
+        FileManager &FM = Headers.getFileMgr();
+        AssemblyDirs.push_back(DirectoryLookup(FM.getDirectory(
+          "C:\\Program Files (x86)\\Reference Assemblies\\Microsoft\\"
+          "Framework\\.NETFramework\\v4.0"), SrcMgr::C_System,
+          false, false));
+      
+      for (unsigned i = 0; i < HSOpts.AssemblyEntries.size(); ++i) {
+          AssemblyDirs.push_back(
+              DirectoryLookup(FM.getDirectory(HSOpts.AssemblyEntries[i].Path),
+              SrcMgr::C_User, false, false));
+      }
+    }
+
     return;
   }
 
@@ -638,6 +654,8 @@ void InitHeaderSearch::Realize(const LangOptions &Lang) {
 
   Headers.SetSystemHeaderPrefixes(SystemHeaderPrefixes);
 
+  Headers.SetAssemblySearchPaths(AssemblyDirs);
+
   // If verbose, print the list of directories that will be searched.
   if (Verbose) {
     llvm::errs() << "#include \"...\" search starts here:\n";
@@ -655,6 +673,13 @@ void InitHeaderSearch::Realize(const LangOptions &Lang) {
         Suffix = " (headermap)";
       }
       llvm::errs() << " " << Name << Suffix << "\n";
+    }
+    if (Lang.CPlusPlusCLI) {
+      llvm::errs() << "#using \"...\" search starts here:\n";
+      llvm::errs() << "#using <...> search starts here:\n";
+      for (unsigned i = 0, e = AssemblyDirs.size(); i != e; ++i) {
+        llvm::errs() << " " << AssemblyDirs[i].getName() << "\n";
+      }
     }
     llvm::errs() << "End of search list.\n";
   }
