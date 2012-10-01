@@ -3338,6 +3338,15 @@ bool UnnamedLocalNoLinkageFinder::VisitBlockPointerType(
   return Visit(T->getPointeeType());
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitHandleType(const HandleType* T) {
+  return Visit(T->getPointeeType());
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitTrackingReferenceType(
+                                                    const TrackingReferenceType* T) {
+  return Visit(T->getPointeeType());
+}
+
 bool UnnamedLocalNoLinkageFinder::VisitLValueReferenceType(
                                                 const LValueReferenceType* T) {
   return Visit(T->getPointeeType());

@@ -104,6 +104,10 @@ TYPE(ObjCInterface, ObjCObjectType)
 TYPE(ObjCObjectPointer, Type)
 TYPE(Atomic, Type)
 
+// C++/CLI types
+TYPE(Handle, Type)
+TYPE(TrackingReference, ReferenceType)
+
 #ifdef LAST_TYPE
 LAST_TYPE(Atomic)
 #undef LAST_TYPE

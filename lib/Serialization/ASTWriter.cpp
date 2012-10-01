@@ -109,6 +109,16 @@ void ASTTypeWriter::VisitBlockPointerType(const BlockPointerType *T) {
   Code = TYPE_BLOCK_POINTER;
 }
 
+void ASTTypeWriter::VisitHandleType(const HandleType *T) {
+  Writer.AddTypeRef(T->getPointeeType(), Record);
+  Code = TYPE_HANDLE;
+}
+
+void ASTTypeWriter::VisitTrackingReferenceType(const TrackingReferenceType *T) {
+  Writer.AddTypeRef(T->getPointeeType(), Record);
+  Code = TYPE_TRACKING_REFERENCE;
+}
+
 void ASTTypeWriter::VisitLValueReferenceType(const LValueReferenceType *T) {
   Writer.AddTypeRef(T->getPointeeTypeAsWritten(), Record);
   Record.push_back(T->isSpelledAsLValue());
@@ -442,6 +452,12 @@ void TypeLocWriter::VisitPointerTypeLoc(PointerTypeLoc TL) {
 }
 void TypeLocWriter::VisitBlockPointerTypeLoc(BlockPointerTypeLoc TL) {
   Writer.AddSourceLocation(TL.getCaretLoc(), Record);
+}
+void TypeLocWriter::VisitHandleTypeLoc(HandleTypeLoc TL) {
+  Writer.AddSourceLocation(TL.getCaretLoc(), Record);
+}
+void TypeLocWriter::VisitTrackingReferenceTypeLoc(TrackingReferenceTypeLoc TL) {
+  Writer.AddSourceLocation(TL.getPercentLoc(), Record);
 }
 void TypeLocWriter::VisitLValueReferenceTypeLoc(LValueReferenceTypeLoc TL) {
   Writer.AddSourceLocation(TL.getAmpLoc(), Record);

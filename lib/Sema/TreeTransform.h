@@ -3581,6 +3581,59 @@ TreeTransform<Derived>::TransformBlockPointerType(TypeLocBuilder &TLB,
   return Result;
 }
 
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformHandleType(TypeLocBuilder &TLB,
+                                                  HandleTypeLoc TL) {
+  QualType PointeeType
+    = getDerived().TransformType(TLB, TL.getPointeeLoc());
+  if (PointeeType.isNull())
+    return QualType();
+  
+  QualType Result = TL.getType();
+#if CIL
+  if (getDerived().AlwaysRebuild() ||
+      PointeeType != TL.getPointeeLoc().getType()) {
+    Result = getDerived().RebuildHandleType(PointeeType,
+                                                  TL.getSigilLoc());
+    if (Result.isNull())
+      return QualType();
+  }
+#endif
+
+  HandleTypeLoc NewT = TLB.push<HandleTypeLoc>(Result);
+  NewT.setCaretLoc(TL.getCaretLoc());
+  return Result;
+}
+
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformTrackingReferenceType(TypeLocBuilder &TLB,
+                                              TrackingReferenceTypeLoc TL) {
+  const ReferenceType *T = TL.getTypePtr();
+
+  // Note that this works with the pointee-as-written.
+  QualType PointeeType = getDerived().TransformType(TLB, TL.getPointeeLoc());
+  if (PointeeType.isNull())
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      PointeeType != T->getPointeeTypeAsWritten()) {
+    Result = getDerived().RebuildReferenceType(PointeeType,
+                                               T->isSpelledAsLValue(),
+                                               TL.getSigilLoc());
+    if (Result.isNull())
+      return QualType();
+  }
+
+  TrackingReferenceTypeLoc NewTL 
+      = TLB.push<TrackingReferenceTypeLoc>(Result);
+  NewTL.setPercentLoc(TL.getPercentLoc());
+
+  return Result;
+}
+
 /// Transforms a reference type.  Note that somewhat paradoxically we
 /// don't care whether the type itself is an l-value type or an r-value
 /// type;  we only care if the type was *written* as an l-value type

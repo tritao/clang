@@ -243,6 +243,8 @@ bool Declarator::isDeclarationOfFunction() const {
       continue;
     case DeclaratorChunk::Pointer:
     case DeclaratorChunk::Reference:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
     case DeclaratorChunk::Array:
     case DeclaratorChunk::BlockPointer:
     case DeclaratorChunk::MemberPointer:

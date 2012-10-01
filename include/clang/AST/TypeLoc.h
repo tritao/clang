@@ -969,6 +969,18 @@ public:
   }
 };
 
+/// \brief Wrapper for source info for block pointers.
+class HandleTypeLoc : public PointerLikeTypeLoc<HandleTypeLoc,
+                                                      HandleType> {
+public:
+  SourceLocation getCaretLoc() const {
+    return getSigilLoc();
+  }
+  void setCaretLoc(SourceLocation Loc) {
+    setSigilLoc(Loc);
+  }
+};
+
 struct MemberPointerLocInfo : public PointerLikeLocInfo {
   TypeSourceInfo *ClassTInfo;
 };
@@ -1057,6 +1069,18 @@ public:
   }
 };
 
+class TrackingReferenceTypeLoc :
+    public InheritingConcreteTypeLoc<ReferenceTypeLoc,
+                                     TrackingReferenceTypeLoc,
+                                     TrackingReferenceType> {
+public:
+  SourceLocation getPercentLoc() const {
+    return getSigilLoc();
+  }
+  void setPercentLoc(SourceLocation Loc) {
+    setSigilLoc(Loc);
+  }
+};
 
 struct FunctionLocInfo {
   SourceLocation LocalRangeBegin;

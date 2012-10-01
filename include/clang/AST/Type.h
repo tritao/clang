@@ -1551,6 +1551,8 @@ public:
   bool isPointerType() const;
   bool isAnyPointerType() const;   // Any C pointer or ObjC object pointer
   bool isBlockPointerType() const;
+  bool isHandleType() const;
+  bool isTrackingReferenceType() const;
   bool isVoidPointerType() const;
   bool isReferenceType() const;
   bool isLValueReferenceType() const;
@@ -2105,6 +2107,56 @@ public:
     return T->getTypeClass() == RValueReference;
   }
   static bool classof(const RValueReferenceType *) { return true; }
+};
+
+/// TrackingReferenceType - C++/CLI [8.2.5]
+///
+class TrackingReferenceType : public ReferenceType {
+  TrackingReferenceType(QualType Referencee, QualType CanonicalRef) :
+    ReferenceType(TrackingReference, Referencee, CanonicalRef, true) {}
+  friend class ASTContext; // ASTContext creates these
+public:
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == TrackingReference;
+  }
+  static bool classof(const TrackingReferenceType *) { return true; }
+};
+
+/// HandleType - pointer to a handle type.
+/// This type is to represent GC-allocated CLR types.
+class HandleType : public Type, public llvm::FoldingSetNode {
+  QualType PointeeType;  // Handle is some kind of pointer type
+  HandleType(QualType Pointee, QualType CanonicalCls) :
+    Type(Handle, CanonicalCls, Pointee->isDependentType(),
+         Pointee->isInstantiationDependentType(),
+         Pointee->isVariablyModifiedType(),
+         Pointee->containsUnexpandedParameterPack()),
+    PointeeType(Pointee) {
+  }
+  friend class ASTContext;  // ASTContext creates these.
+
+public:
+
+  // Get the pointee type. Pointee is required to always be a function type.
+  QualType getPointeeType() const { return PointeeType; }
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+      Profile(ID, getPointeeType());
+  }
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType Pointee) {
+      ID.AddPointer(Pointee.getAsOpaquePtr());
+  }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Handle;
+  }
+  static bool classof(const HandleType *) { return true; }
 };
 
 /// MemberPointerType - C++ 8.3.3 - Pointers to members
@@ -4830,6 +4882,12 @@ inline bool Type::isAnyPointerType() const {
 }
 inline bool Type::isBlockPointerType() const {
   return isa<BlockPointerType>(CanonicalType);
+}
+inline bool Type::isHandleType() const {
+  return isa<HandleType>(CanonicalType);
+}
+inline bool Type::isTrackingReferenceType() const {
+  return isa<TrackingReferenceType>(CanonicalType);
 }
 inline bool Type::isReferenceType() const {
   return isa<ReferenceType>(CanonicalType);

@@ -2030,10 +2030,15 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       T = cast<BlockPointerType>(T)->getPointeeType().getTypePtr();
       continue;
 
+    case Type::Handle:
+      T = cast<HandleType>(T)->getPointeeType().getTypePtr();
+      continue;
+
     // References aren't covered by the standard, but that's such an
     // obvious defect that we cover them anyway.
     case Type::LValueReference:
     case Type::RValueReference:
+    case Type::TrackingReference:
       T = cast<ReferenceType>(T)->getPointeeType().getTypePtr();
       continue;
 

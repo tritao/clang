@@ -96,6 +96,8 @@ class ASTContext : public RefCountedBase<ASTContext> {
   mutable llvm::FoldingSet<ComplexType> ComplexTypes;
   mutable llvm::FoldingSet<PointerType> PointerTypes;
   mutable llvm::FoldingSet<BlockPointerType> BlockPointerTypes;
+  mutable llvm::FoldingSet<HandleType> HandleTypes;
+  mutable llvm::FoldingSet<TrackingReferenceType> TrackingReferenceTypes;
   mutable llvm::FoldingSet<LValueReferenceType> LValueReferenceTypes;
   mutable llvm::FoldingSet<RValueReferenceType> RValueReferenceTypes;
   mutable llvm::FoldingSet<MemberPointerType> MemberPointerTypes;
@@ -851,6 +853,14 @@ public:
   /// \brief Return the uniqued reference to the type for an rvalue reference
   /// to the specified type.
   QualType getRValueReferenceType(QualType T) const;
+
+  /// \brief Return the uniqued reference to the type for an handle
+  /// of the specified type.
+  QualType getHandleType(QualType T) const;
+
+  /// \brief Return the uniqued reference to the type for a
+  /// tracking reference of the specified type.
+  QualType getTrackingReferenceType(QualType T) const;
 
   /// \brief Return the uniqued reference to the type for a member pointer to
   /// the specified type in the specified class.

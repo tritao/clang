@@ -208,6 +208,8 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::BlockPointer:
     case Type::LValueReference:
     case Type::RValueReference:
+    case Type::Handle:
+    case Type::TrackingReference:
     case Type::MemberPointer:
     case Type::DependentSizedExtVector:
     case Type::Vector:
@@ -350,6 +352,18 @@ void TypePrinter::printBlockPointerAfter(const BlockPointerType *T,
   printAfter(T->getPointeeType(), OS);
 }
 
+void TypePrinter::printHandleBefore(const HandleType *T,
+                                          raw_ostream &OS) {
+  SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);
+  printBefore(T->getPointeeType(), OS);
+  OS << '^';
+}
+void TypePrinter::printHandleAfter(const HandleType *T,
+                                          raw_ostream &OS) {
+  SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);
+  printAfter(T->getPointeeType(), OS);
+}
+
 void TypePrinter::printLValueReferenceBefore(const LValueReferenceType *T,
                                              raw_ostream &OS) {
   IncludeStrongLifetimeRAII Strong(Policy);
@@ -384,6 +398,28 @@ void TypePrinter::printRValueReferenceBefore(const RValueReferenceType *T,
   OS << "&&";
 }
 void TypePrinter::printRValueReferenceAfter(const RValueReferenceType *T,
+                                            raw_ostream &OS) {
+  IncludeStrongLifetimeRAII Strong(Policy);
+  SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);
+  // Handle things like 'int (&&A)[4];' correctly.
+  // FIXME: this should include vectors, but vectors use attributes I guess.
+  if (isa<ArrayType>(T->getPointeeTypeAsWritten()))
+    OS << ')';
+  printAfter(T->getPointeeTypeAsWritten(), OS);
+}
+
+void TypePrinter::printTrackingReferenceBefore(const TrackingReferenceType *T,
+                                             raw_ostream &OS) {
+  IncludeStrongLifetimeRAII Strong(Policy);
+  SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);
+  printBefore(T->getPointeeTypeAsWritten(), OS);
+  // Handle things like 'int (&&A)[4];' correctly.
+  // FIXME: this should include vectors, but vectors use attributes I guess.
+  if (isa<ArrayType>(T->getPointeeTypeAsWritten()))
+    OS << '(';
+  OS << "%";
+}
+void TypePrinter::printTrackingReferenceAfter(const TrackingReferenceType *T,
                                             raw_ostream &OS) {
   IncludeStrongLifetimeRAII Strong(Policy);
   SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);

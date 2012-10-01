@@ -407,8 +407,16 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     break;
 
+  case Type::Handle:
+    if (!IsStructurallyEquivalent(Context,
+                                  cast<HandleType>(T1)->getPointeeType(),
+                                  cast<HandleType>(T2)->getPointeeType()))
+      return false;
+    break;
+
   case Type::LValueReference:
-  case Type::RValueReference: {
+  case Type::RValueReference:
+  case Type::TrackingReference: {
     const ReferenceType *Ref1 = cast<ReferenceType>(T1);
     const ReferenceType *Ref2 = cast<ReferenceType>(T2);
     if (Ref1->isSpelledAsLValue() != Ref2->isSpelledAsLValue())

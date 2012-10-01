@@ -559,6 +559,13 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     ResultType = ConvertType(cast<AtomicType>(Ty)->getValueType());
     break;
   }
+
+  case Type::Handle: {
+  case Type::TrackingReference:
+    //assert("Can't handle C++ extension types yet");
+    return 0;
+    break;
+  }
   }
   
   assert(ResultType && "Didn't convert a type?");

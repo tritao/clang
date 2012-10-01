@@ -1436,6 +1436,25 @@ void MicrosoftCXXNameMangler::mangleType(const PointerType *T,
     mangleType(PointeeTy, Range, false);
   }
 }
+
+void MicrosoftCXXNameMangler::mangleType(const HandleType *T,
+                                         SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle handles yet");
+  Diags.Report(Range.getBegin(), DiagID)
+    << Range;
+}
+
+void MicrosoftCXXNameMangler::mangleType(const TrackingReferenceType *T,
+                                         SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle tracking references yet");
+  Diags.Report(Range.getBegin(), DiagID)
+    << Range;
+}
+
 void MicrosoftCXXNameMangler::mangleType(const ObjCObjectPointerType *T,
                                          SourceRange Range) {
   // Object pointers never have qualifiers.

@@ -398,6 +398,8 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
 
   case Type::LValueReference:
   case Type::RValueReference:
+  case Type::Handle:
+  case Type::TrackingReference:
     llvm_unreachable("References shouldn't get here");
 
   case Type::Builtin:

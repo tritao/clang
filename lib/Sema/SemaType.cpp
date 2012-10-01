@@ -316,6 +316,8 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Function:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       goto error;
     }
   }
@@ -348,6 +350,8 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::MemberPointer:
     case DeclaratorChunk::Paren:
     case DeclaratorChunk::Array:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       continue;
 
     case DeclaratorChunk::Function:
@@ -409,6 +413,8 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::Array:
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       continue;
     }
   }
@@ -1144,6 +1150,50 @@ QualType Sema::BuildPointerType(QualType T,
   return Context.getPointerType(T);
 }
 
+/// \brief Build an handle type.
+///
+/// \param T The type to which we'll be building an handle.
+///
+/// \param Loc The location of the entity whose type involves this
+/// handle type or, if there is no such entity, the location of the
+/// type that will have handle type.
+///
+/// \param Entity The name of the entity that involves the handle
+/// type, if known.
+///
+/// \returns A suitable handle type, if there are no
+/// errors. Otherwise, returns a NULL type.
+QualType Sema::BuildHandleType(QualType T,
+                                SourceLocation Loc, DeclarationName Entity) {
+#if 0
+  if (T->isReferenceType()) {
+    // C++ 8.3.2p4: There shall be no ... pointers to references ...
+    Diag(Loc, diag::err_illegal_decl_pointer_to_reference)
+      << getPrintableNameForEntity(Entity) << T;
+    return QualType();
+  }
+#endif
+  // Build the handle type.
+  return Context.getHandleType(T);
+}
+
+
+/// \brief Build a tracking reference type.
+///
+/// \param T The type to which we'll be building a tracking reference.
+///
+/// \param Loc The location of the entity whose type involves this type.
+///
+/// \param Entity The name of the entity that involves the type, if known.
+///
+/// \returns A suitable tracking reference type, if there are no
+/// errors. Otherwise, returns a NULL type.
+QualType Sema::BuildTrackingReferenceType(QualType T,
+                                SourceLocation Loc, DeclarationName Entity) {
+  // Build the tracking reference type.
+  return Context.getTrackingReferenceType(T);
+}
+
 /// \brief Build a reference type.
 ///
 /// \param T The type to which we'll be building a reference.
@@ -1684,6 +1734,8 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::Array: // suppress if written (id[])?
     case DeclaratorChunk::Function:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       return;
     }
   }
@@ -2039,6 +2091,9 @@ static void checkQualifiedFunction(Sema &S, QualType T,
   case DeclaratorChunk::Reference:
     DiagKind = 2;
     break;
+  case DeclaratorChunk::Handle:
+  case DeclaratorChunk::TrackingReference:
+    return;
   }
 
   assert(DiagKind != -1);
@@ -2220,7 +2275,22 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       T = S.BuildPointerType(T, DeclType.Loc, Name);
       if (DeclType.Ptr.TypeQuals)
         T = S.BuildQualifiedType(T, DeclType.Loc, DeclType.Ptr.TypeQuals);
+      break;
+    case DeclaratorChunk::Handle:
+      // If C++/CLI extensions are disabled, emit an error.
+      if (!LangOpts.CPlusPlusCLI)
+        S.Diag(DeclType.Loc, diag::err_handles_disable);
 
+      T = S.BuildHandleType(T, D.getIdentifierLoc(), Name);
+      if (DeclType.Han.TypeQuals)
+        T = S.BuildQualifiedType(T, DeclType.Loc, DeclType.Han.TypeQuals);
+      break;
+    case DeclaratorChunk::TrackingReference:
+      // If C++/CLI extensions are disabled, emit an error.
+      if (!LangOpts.CPlusPlusCLI)
+        S.Diag(DeclType.Loc, diag::err_trackrefs_disable);
+
+      T = S.BuildTrackingReferenceType(T, D.getIdentifierLoc(), Name);
       break;
     case DeclaratorChunk::Reference: {
       // Verify that we're not building a reference to pointer to function with
@@ -2922,6 +2992,8 @@ static void transferARCOwnership(TypeProcessingState &state,
 
     case DeclaratorChunk::Function:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       return;
     }
   }
@@ -3204,6 +3276,14 @@ namespace {
     void VisitPointerTypeLoc(PointerTypeLoc TL) {
       assert(Chunk.Kind == DeclaratorChunk::Pointer);
       TL.setStarLoc(Chunk.Loc);
+    }
+    void VisitHandleTypeLoc(HandleTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::Handle);
+      TL.setCaretLoc(Chunk.Loc);
+    }
+    void VisitTrackingReferenceTypeLoc(TrackingReferenceTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::TrackingReference);
+      TL.setPercentLoc(Chunk.Loc);
     }
     void VisitObjCObjectPointerTypeLoc(ObjCObjectPointerTypeLoc TL) {
       assert(Chunk.Kind == DeclaratorChunk::Pointer);

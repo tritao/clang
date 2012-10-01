@@ -2093,8 +2093,11 @@ static CachedProperties computeCachedProperties(const Type *T) {
     return Cache::get(cast<PointerType>(T)->getPointeeType());
   case Type::BlockPointer:
     return Cache::get(cast<BlockPointerType>(T)->getPointeeType());
+  case Type::Handle:
+    return Cache::get(cast<HandleType>(T)->getPointeeType());
   case Type::LValueReference:
   case Type::RValueReference:
+  case Type::TrackingReference:
     return Cache::get(cast<ReferenceType>(T)->getPointeeType());
   case Type::MemberPointer: {
     const MemberPointerType *MPT = cast<MemberPointerType>(T);

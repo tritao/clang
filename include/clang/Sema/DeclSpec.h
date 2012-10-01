@@ -999,6 +999,7 @@ typedef SmallVector<Token, 4> CachedTokens;
 struct DeclaratorChunk {
   enum {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
+    Handle, TrackingReference /* C++/CLI */
   } Kind;
 
   /// Loc - The place where this type was defined.
@@ -1032,6 +1033,20 @@ struct DeclaratorChunk {
     bool HasRestrict : 1;
     /// True if this is an lvalue reference, false if it's an rvalue reference.
     bool LValueRef : 1;
+    void destroy() {
+    }
+  };
+
+  struct HandleTypeInfo : TypeInfoCommon {
+    /// For now, sema will catch these as invalid.
+    /// The type qualifiers: const/volatile/restrict.
+    unsigned TypeQuals : 3;
+
+    void destroy() {
+    }
+  };
+
+  struct TrackingReferenceTypeInfo : TypeInfoCommon {
     void destroy() {
     }
   };
@@ -1276,6 +1291,8 @@ struct DeclaratorChunk {
     TypeInfoCommon        Common;
     PointerTypeInfo       Ptr;
     ReferenceTypeInfo     Ref;
+    HandleTypeInfo        Han;
+    TrackingReferenceTypeInfo TRef;
     ArrayTypeInfo         Arr;
     FunctionTypeInfo      Fun;
     BlockPointerTypeInfo  Cls;
@@ -1288,6 +1305,8 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Pointer:       return Ptr.destroy();
     case DeclaratorChunk::BlockPointer:  return Cls.destroy();
     case DeclaratorChunk::Reference:     return Ref.destroy();
+    case DeclaratorChunk::Handle:        return Han.destroy();
+    case DeclaratorChunk::TrackingReference: return TRef.destroy();
     case DeclaratorChunk::Array:         return Arr.destroy();
     case DeclaratorChunk::MemberPointer: return Mem.destroy();
     case DeclaratorChunk::Paren:         return;
@@ -1380,6 +1399,17 @@ struct DeclaratorChunk {
     I.Loc           = Loc;
     I.Cls.TypeQuals = TypeQuals;
     I.Cls.AttrList  = 0;
+    return I;
+  }
+
+  /// \brief Return a DeclaratorChunk for an handle.
+  static DeclaratorChunk getHandlePointer(unsigned TypeQuals,
+                                         SourceLocation Loc) {
+    DeclaratorChunk I;
+    I.Kind          = Handle;
+    I.Loc           = Loc;
+    I.Han.TypeQuals = TypeQuals;
+    I.Han.AttrList  = 0;
     return I;
   }
 
@@ -1788,7 +1818,9 @@ public:
         continue;
       case DeclaratorChunk::Function:
       case DeclaratorChunk::Pointer:
+      case DeclaratorChunk::Handle:
       case DeclaratorChunk::Reference:
+      case DeclaratorChunk::TrackingReference:
       case DeclaratorChunk::BlockPointer:
       case DeclaratorChunk::MemberPointer:
         return false;
@@ -1813,7 +1845,9 @@ public:
       case DeclaratorChunk::Paren:
         continue;
       case DeclaratorChunk::Pointer:
+      case DeclaratorChunk::Handle:
       case DeclaratorChunk::Reference:
+      case DeclaratorChunk::TrackingReference:
       case DeclaratorChunk::Array:
       case DeclaratorChunk::BlockPointer:
       case DeclaratorChunk::MemberPointer:

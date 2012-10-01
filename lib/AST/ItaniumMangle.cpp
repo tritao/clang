@@ -835,6 +835,8 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::Complex:
     case Type::Pointer:
     case Type::BlockPointer:
+    case Type::Handle:
+    case Type::TrackingReference:
     case Type::LValueReference:
     case Type::RValueReference:
     case Type::MemberPointer:
@@ -2042,6 +2044,20 @@ void CXXNameMangler::mangleType(const PointerType *T) {
 void CXXNameMangler::mangleType(const ObjCObjectPointerType *T) {
   Out << 'P';
   mangleType(T->getPointeeType());
+}
+
+void CXXNameMangler::mangleType(const HandleType *T) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle handles yet");
+  Diags.Report(DiagID);
+}
+
+void CXXNameMangler::mangleType(const TrackingReferenceType *T) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle tracking references yet");
+  Diags.Report(DiagID);
 }
 
 // <type> ::= R <type>   # reference-to

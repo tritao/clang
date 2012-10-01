@@ -859,6 +859,10 @@ public:
                             SourceLocation Loc, DeclarationName Entity);
   QualType BuildReferenceType(QualType T, bool LValueRef,
                               SourceLocation Loc, DeclarationName Entity);
+  QualType BuildHandleType(QualType T,
+                            SourceLocation Loc, DeclarationName Entity);
+  QualType BuildTrackingReferenceType(QualType T,
+                            SourceLocation Loc, DeclarationName Entity);
   QualType BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
                           Expr *ArraySize, unsigned Quals,
                           SourceRange Brackets, DeclarationName Entity);
