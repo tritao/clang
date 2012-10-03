@@ -1948,7 +1948,7 @@ QualType ASTContext::getHandleType(QualType T) const {
   // so fill in the canonical type field.
   QualType Canonical;
   if (!T.isCanonical()) {
-    Canonical = getPointerType(getCanonicalType(T));
+    Canonical = getHandleType(getCanonicalType(T));
 
     // Get the new insert position for the node we care about.
     HandleType *NewIP = HandleTypes.FindNodeOrInsertPos(ID, InsertPos);
