@@ -2575,7 +2575,7 @@ protected:
 
   void getTargetDefines(const LangOptions &Opts,
                                 MacroBuilder &Builder) const {
-    //if (Opts.CPlusPlusCLI)
+    if (Opts.CPlusPlusCLI)
       Builder.defineMacro("__cplusplus_cli", "200509L");
   }
   
