@@ -1639,6 +1639,8 @@ void Preprocessor::HandleUsingDirective(SourceLocation HashLoc,
     return;
   }
 
+  CharSourceRange FilenameRange
+    = CharSourceRange::getCharRange(FilenameTok.getLocation(), CharEnd);
   StringRef OriginalFilename = Filename;
   bool isAngled =
     GetIncludeFilenameSpelling(FilenameTok.getLocation(), Filename);
@@ -1656,37 +1658,10 @@ void Preprocessor::HandleUsingDirective(SourceLocation HashLoc,
   CheckEndOfDirective(UsingTok.getIdentifierInfo()->getNameStart(), true);
 
   if (Callbacks) {
-    //Callbacks->UsingDirective(HashLoc, UsingTok, Filename, isAngled, 0, End, 0, 0);
+    // Notify the callback object that we've seen an using directive.
+    Callbacks->UsingDirective(HashLoc, UsingTok, Filename, isAngled,
+                              FilenameRange);
   }
-
-  // Search include directories.
-  const DirectoryLookup *CurDir;
-  SmallString<1024> SearchPath;
-  SmallString<1024> RelativePath;
-  
-  const FileEntry *File = LookupFile(
-      Filename, isAngled, 0, CurDir,
-      Callbacks ? &SearchPath : NULL, Callbacks ? &RelativePath : NULL, 0);
-
-  // If the file is still not found, just go with the vanilla diagnostic
-  if (!File) {
-    Diag(FilenameTok, diag::err_pp_file_not_found) << Filename;
-    return;
-  }
-
-  SrcMgr::CharacteristicKind FileCharacter =
-    SourceMgr.getFileCharacteristic(FilenameTok.getLocation());
-
-  // Look up the file, create a File ID for it.
-  SourceLocation IncludePos = End;
-  // If the filename string was the result of macro expansions, set the include
-  // position on the file where it will be included and after the expansions.
-  if (IncludePos.isMacroID())
-    IncludePos = SourceMgr.getExpansionRange(IncludePos).second;
-  FileID FID = SourceMgr.createFileID(File, IncludePos, FileCharacter);
-  assert(!FID.isInvalid() && "Expected valid file ID");
-
-
 }
 
 /// HandleIncludeMacrosDirective - The -imacros command line option turns into a

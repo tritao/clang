@@ -37,6 +37,8 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/Preprocessor.h"
+#include "clang/Lex/PPCallbacks.h"
+#include "clang/Lex/LexDiagnostic.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/TargetInfo.h"
@@ -63,6 +65,56 @@ void Sema::ActOnTranslationUnitScope(Scope *S) {
   PushDeclContext(S, Context.getTranslationUnitDecl());
 
   VAListTagName = PP.getIdentifierInfo("__va_list_tag");
+}
+
+class SemaPPCallbacks : public PPCallbacks {
+  Sema &S;
+
+  /// \brief Callback invoked whenever an using directive (\c \#using)
+  /// has been processed.
+  virtual void UsingDirective(SourceLocation HashLoc,
+                              const Token &UsingTok,
+                              StringRef FileName,
+                              bool IsAngled,
+                              CharSourceRange FilenameRange) LLVM_OVERRIDE;
+
+public:
+  SemaPPCallbacks(Sema &S) : S(S) {}
+};
+
+void SemaPPCallbacks::UsingDirective(SourceLocation HashLoc,
+                                     const Token &UsingTok,
+                                     StringRef FileName,
+                                     bool IsAngled,
+                                     CharSourceRange FilenameRange) {
+  // Search assembly directories.
+  const DirectoryLookup *CurDir;
+
+  const FileEntry *File = S.getPreprocessor().LookupFile(
+      FileName, IsAngled, 0, CurDir, NULL, NULL, 0);
+
+  // If the file is still not found, just go with the vanilla diagnostic
+  if (!File) {
+      S.getPreprocessor().Diag(FilenameRange.getBegin(),
+      diag::err_pp_file_not_found) << FileName;
+    return;
+  }
+
+  SourceManager &SourceMgr = S.getSourceManager();
+
+  SrcMgr::CharacteristicKind FileCharacter =
+      SourceMgr.getFileCharacteristic(FilenameRange.getBegin());
+
+  // Look up the file, create a File ID for it.
+  SourceLocation IncludePos = FilenameRange.getEnd();
+  // If the filename string was the result of macro expansions, set the include
+  // position on the file where it will be included and after the expansions.
+  if (IncludePos.isMacroID())
+    IncludePos = SourceMgr.getExpansionRange(IncludePos).second;
+  FileID FID = SourceMgr.createFileID(File, IncludePos, FileCharacter);
+  assert(!FID.isInvalid() && "Expected valid file ID");
+
+  S.LoadManagedAssembly(FID);
 }
 
 Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
@@ -167,6 +219,14 @@ void Sema::Initialize() {
   DeclarationName BuiltinVaList = &Context.Idents.get("__builtin_va_list");
   if (IdResolver.begin(BuiltinVaList) == IdResolver.end())
     PushOnScopeChains(Context.getBuiltinVaListDecl(), TUScope);
+
+  if (getLangOpts().CPlusPlusCLI) {
+    SemaPPCallbacks *SemaPP = new SemaPPCallbacks(*this);
+    getPreprocessor().addPPCallbacks(SemaPP);
+
+
+    // FIXME: Load mscorlib by default
+  }
 }
 
 Sema::~Sema() {
