@@ -2568,19 +2568,24 @@ public:
 
 namespace {
 // CLR (Common Language Runtime, .NET / Mono) target
-class CLRTargetInfo : public TargetInfo {
+class CLRTargetInfo : public VisualStudioWindowsX86_32TargetInfo {
 protected:
   void getDefaultFeatures(llvm::StringMap<bool> &Features) const {
   }
 
   void getTargetDefines(const LangOptions &Opts,
                                 MacroBuilder &Builder) const {
+    VisualStudioWindowsX86_32TargetInfo::getTargetDefines(Opts,
+      Builder);
+
     if (Opts.CPlusPlusCLI)
       Builder.defineMacro("__cplusplus_cli", "200509L");
   }
   
   void getTargetBuiltins(const Builtin::Info *&Records,
                                  unsigned &NumRecords) const {
+    VisualStudioWindowsX86_32TargetInfo::getTargetBuiltins(Records,
+      NumRecords);
   }
 
   BuiltinVaListKind getBuiltinVaListKind() const {
@@ -2609,7 +2614,7 @@ protected:
   }
 
 public:
-  CLRTargetInfo(const std::string &triple) : TargetInfo(triple) {}
+  CLRTargetInfo(const std::string &triple) : VisualStudioWindowsX86_32TargetInfo(triple) {}
 };
 } // end anonymous namespace.
 
