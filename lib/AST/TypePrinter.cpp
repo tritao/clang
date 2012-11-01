@@ -949,6 +949,14 @@ void TypePrinter::printTag(TagDecl *D, raw_ostream &OS) {
   spaceBeforePlaceHolder(OS);
 }
 
+void TypePrinter::printCLIArrayBefore(const CLIArrayType *T,
+                                      raw_ostream &OS) {
+  printTag(T->getDecl(), OS);
+}
+void TypePrinter::printCLIArrayAfter(const CLIArrayType *T,
+                                     raw_ostream &OS) {
+}
+
 void TypePrinter::printRecordBefore(const RecordType *T, raw_ostream &OS) {
   printTag(T->getDecl(), OS);
 }

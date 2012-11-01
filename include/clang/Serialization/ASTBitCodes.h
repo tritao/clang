@@ -740,13 +740,14 @@ namespace clang {
       TYPE_AUTO                  = 38,
       /// \brief A UnaryTransformType record.
       TYPE_UNARY_TRANSFORM       = 39,
-      /// \brief An AtomicType record.
-      TYPE_ATOMIC                = 40,
       /// \brief An HandleType record.
-      TYPE_HANDLE                = 41,
+      TYPE_HANDLE                = 45,
       /// \brief An TrackingReferenceType record.
-      TYPE_TRACKING_REFERENCE    = 42
-
+      TYPE_TRACKING_REFERENCE    = 46,
+      /// \brief An CLIArrayType record.
+      TYPE_CLI_ARRAY = 47,
+      /// \brief An AtomicType record.
+      TYPE_ATOMIC                = 40
     };
 
     /// \brief The type IDs for special types constructed by semantic

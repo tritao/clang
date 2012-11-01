@@ -24,9 +24,11 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/Designator.h"
@@ -4620,6 +4622,33 @@ QualType TreeTransform<Derived>::TransformAtomicType(TypeLocBuilder &TLB,
   NewTL.setKWLoc(TL.getKWLoc());
   NewTL.setLParenLoc(TL.getLParenLoc());
   NewTL.setRParenLoc(TL.getRParenLoc());
+
+  return Result;
+}
+
+// C++/CLI extensions
+template<typename Derived>
+QualType TreeTransform<Derived>::TransformCLIArrayType(TypeLocBuilder &TLB,
+                                                       CLIArrayTypeLoc TL) {
+  const RecordType *T = TL.getTypePtr();
+  RecordDecl *Record
+    = cast_or_null<RecordDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                          T->getDecl()));
+  if (!Record)
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      Record != T->getDecl()) {
+#if 0
+    Result = getDerived().RebuildRecordType(Record);
+#endif
+    if (Result.isNull())
+      return QualType();
+  }
+
+  CLIArrayTypeLoc NewTL = TLB.push<CLIArrayTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
 
   return Result;
 }

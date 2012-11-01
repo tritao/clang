@@ -16,15 +16,18 @@
 
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
@@ -988,6 +991,10 @@ DEF_TRAVERSE_TYPE(ObjCObjectPointerType, {
     TRY_TO(TraverseType(T->getPointeeType()));
   })
 
+DEF_TRAVERSE_TYPE(CLIArrayType, {
+    TRY_TO(TraverseType(T->getElementType()));
+  })
+
 DEF_TRAVERSE_TYPE(AtomicType, {
     TRY_TO(TraverseType(T->getValueType()));
   })
@@ -1231,6 +1238,8 @@ DEF_TRAVERSE_TYPELOC(ObjCObjectPointerType, {
 DEF_TRAVERSE_TYPELOC(AtomicType, {
     TRY_TO(TraverseTypeLoc(TL.getValueLoc()));
   })
+
+DEF_TRAVERSE_TYPELOC(CLIArrayType, { })
 
 #undef DEF_TRAVERSE_TYPELOC
 
@@ -2047,7 +2056,7 @@ DEF_TRAVERSE_STMT(CXXNewExpr, {
   TRY_TO(TraverseTypeLoc(S->getAllocatedTypeSourceInfo()->getTypeLoc()));
   })
 
-DEF_TRAVERSE_STMT(CXXCLIGCNewExpr, {
+DEF_TRAVERSE_STMT(CLIGCNewExpr, {
   // The child-iterator will pick up the other arguments.
   TRY_TO(TraverseTypeLoc(S->getAllocatedTypeSourceInfo()->getTypeLoc()));
   })

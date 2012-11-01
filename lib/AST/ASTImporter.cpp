@@ -814,6 +814,19 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     break;
   }
 
+  // C++/CLI extensions
+  case Type::CLIArray: {
+    const CLIArrayType *Arr1 = cast<CLIArrayType>(T1);
+    const CLIArrayType *Arr2 = cast<CLIArrayType>(T2);
+    if (!IsStructurallyEquivalent(Context,
+                                  Arr1->getElementType(),
+                                  Arr2->getElementType()))
+      return false;
+    if (Arr1->getRank() != Arr2->getRank())
+      return false;
+    break;
+  }
+
   case Type::Atomic: {
     if (!IsStructurallyEquivalent(Context,
                                   cast<AtomicType>(T1)->getValueType(),

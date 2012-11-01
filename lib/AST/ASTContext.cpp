@@ -1397,6 +1397,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = toBits(Layout.getAlignment());
     break;
   }
+  case Type::CLIArray:
   case Type::Record:
   case Type::Enum: {
     const TagType *TT = cast<TagType>(T);
@@ -3321,6 +3322,18 @@ QualType ASTContext::getObjCInterfaceType(const ObjCInterfaceDecl *Decl,
   void *Mem = Allocate(sizeof(ObjCInterfaceType), TypeAlignment);
   ObjCInterfaceType *T = new (Mem) ObjCInterfaceType(Decl);
   Decl->TypeForDecl = T;
+  Types.push_back(T);
+  return QualType(T, 0);
+}
+
+/// getObjCInterfaceType - Return the unique reference to the type for the
+/// specified ObjC interface decl. The list of protocols is optional.
+QualType ASTContext::getCLIArrayType(QualType ElementType,
+                                     unsigned Dimensions,
+                                     const RecordDecl *Decl) const {
+  void *Mem = Allocate(sizeof(CLIArrayType), TypeAlignment);
+  CLIArrayType *T = new (Mem) CLIArrayType(ElementType, Dimensions, Decl);
+  //Decl->TypeForDecl = T;
   Types.push_back(T);
   return QualType(T, 0);
 }
@@ -6758,6 +6771,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   }
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
+  case Type::CLIArray:
   case Type::Record:
   case Type::Enum:
     return QualType();

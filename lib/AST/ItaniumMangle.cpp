@@ -2274,6 +2274,14 @@ void CXXNameMangler::mangleType(const AtomicType *T) {
   mangleType(T->getValueType());
 }
 
+// C++/CLI extensions
+void CXXNameMangler::mangleType(const CLIArrayType *T) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                   "cannot mangle C++/CLI types");
+  Diags.Report(DiagID);
+}
+
 void CXXNameMangler::mangleIntegerLiteral(QualType T,
                                           const llvm::APSInt &Value) {
   //  <expr-primary> ::= L <type> <value number> E # integer literal

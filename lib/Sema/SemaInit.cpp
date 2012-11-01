@@ -228,6 +228,11 @@ class InitListChecker {
                       bool SubobjectIsDesignatorContext, unsigned &Index,
                       InitListExpr *StructuredList,
                       unsigned &StructuredIndex);
+  void CheckCLIArrayType(const InitializedEntity &Entity,
+                         InitListExpr *IList, QualType &DeclType,
+                         unsigned &Index,
+                         InitListExpr *StructuredList,
+                         unsigned &StructuredIndex);
   bool CheckDesignatedInitializer(const InitializedEntity &Entity,
                                   InitListExpr *IList, DesignatedInitExpr *DIE,
                                   unsigned DesigIdx,
@@ -716,6 +721,9 @@ void InitListChecker::CheckListElementTypes(const InitializedEntity &Entity,
       SemaRef.Diag(IList->getLocStart(), diag::err_init_objc_class)
         << DeclType;
     hadError = true;
+  } else if (isa<CLIArrayType>(DeclType)) {
+    CheckCLIArrayType(Entity, IList, DeclType, Index,
+                      StructuredList, StructuredIndex);
   } else {
     if (!VerifyOnly)
       SemaRef.Diag(IList->getLocStart(), diag::err_illegal_initializer_type)
@@ -1467,6 +1475,32 @@ void InitListChecker::CheckStructUnionTypes(const InitializedEntity &Entity,
   else
     CheckImplicitInitList(MemberEntity, IList, Field->getType(), Index,
                           StructuredList, StructuredIndex);
+}
+
+void InitListChecker::CheckCLIArrayType(const InitializedEntity &Entity,
+                                        InitListExpr *IList, QualType &DeclType,
+                                        unsigned &Index,
+                                        InitListExpr *StructuredList,
+                                        unsigned &StructuredIndex) {
+  const CLIArrayType *arrayType = DeclType->getAs<CLIArrayType>();
+  assert(arrayType && "Expected a CLI array type");
+
+  QualType elementType = arrayType->getElementType();
+  unsigned arrayRank = arrayType->getRank();
+
+  // FIXME: Implement CLI array semantic checking properly
+  while (Index < IList->getNumInits()) {
+    Expr *Init = IList->getInit(Index);
+
+    //InitializedEntity ElementEntity =
+    //  InitializedEntity::InitializeElement(SemaRef.Context, StructuredIndex,
+    //                                       Entity);
+    //// Check this element.
+    //CheckSubElementType(ElementEntity, IList, elementType, Index,
+    //                    StructuredList, StructuredIndex);
+
+    ++Index;
+  }
 }
 
 /// \brief Expand a field designator that refers to a member of an

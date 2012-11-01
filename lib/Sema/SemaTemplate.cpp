@@ -14,6 +14,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"
+#include "clang/Sema/SemaCXXCLI.h"
 #include "TreeTransform.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
@@ -2112,6 +2113,59 @@ QualType Sema::CheckTemplateIdType(TemplateName Name,
   return Context.getTemplateSpecializationType(Name, TemplateArgs, CanonType);
 }
 
+static TypeResult ActOnCLIArray(Sema &S, TemplateDecl *TD,
+                                QualType Result) {
+  assert(Result->getTypeClass() == Type::TemplateSpecialization
+    && "Expected a template specialization");
+
+  QualType Cannonical = S.getASTContext().getCanonicalType(Result);
+
+  const ClassTemplateSpecializationDecl *Decl =  dyn_cast<
+    ClassTemplateSpecializationDecl>(Cannonical->getAsCXXRecordDecl());
+
+  const TemplateArgumentList &Args = Decl->getTemplateArgs();
+  assert(Args.size() == 2 && "Expected 2 template arguments");
+
+  const TemplateArgument &ElementArg = Args.get(0);
+  assert(ElementArg.getKind() == TemplateArgument::Type);
+  QualType ElementType = ElementArg.getAsType();
+
+  // "The element type of a CLI array can be any value type or handle type,
+  // including another CLI array type. "
+
+  // FIXME: Check CLI array element type properly.
+
+  const TemplateArgument &RankArg = Args.get(1);
+  assert(RankArg.getKind() == TemplateArgument::Integral);
+  llvm::APSInt Rank = RankArg.getAsIntegral();
+  
+  uint64_t Dimensions = Rank.getLimitedValue();
+  if (Dimensions < 1 || Dimensions > 32) {
+    S.Diag(TD->getLocation(), S.getDiagnostics().getCustomDiagID(
+             DiagnosticsEngine::Error,
+             "managed array dimensions must be between 1 and 32"));
+    return ParsedType();
+  }
+  
+  return ParsedType::make(S.getASTContext().getCLIArrayType(ElementType,
+    Dimensions, Decl));
+}
+
+static TypeResult ActOnCLIInteriorPtr(Sema &S, TemplateDecl *TD,
+                                      QualType Result) {
+  return ParsedType();
+}
+
+static TypeResult ActOnCLIPinPtr(Sema &S, TemplateDecl *TD,
+                                 QualType Result) {
+  return ParsedType();
+}
+
+static TypeResult ActOnCLISafeCast(Sema &S, TemplateDecl *TD,
+                                   QualType Result) {
+  return ParsedType();
+}
+
 TypeResult
 Sema::ActOnTemplateIdType(CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
                           TemplateTy TemplateD, SourceLocation TemplateLoc,
@@ -2175,7 +2229,21 @@ Sema::ActOnTemplateIdType(CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
     ElabTL.setElaboratedKeywordLoc(SourceLocation());
     ElabTL.setQualifierLoc(SS.getWithLocInContext(Context));
   }
-  
+
+  if (getLangOpts().CPlusPlusCLI) {
+      if (TemplateDecl *TD = Template.getAsTemplateDecl()) {
+        CLISemaContext *CLI = getCLIContext();
+        if (TD == CLI->Array)
+          return ActOnCLIArray(*this, TD, Result);
+        else if (TD == CLI->InteriorPtr)
+          return ActOnCLIInteriorPtr(*this, TD, Result);
+        else if (TD == CLI->PinPtr)
+          return ActOnCLIPinPtr(*this, TD, Result);
+        else if (TD == CLI->SafeCast)
+          return ActOnCLISafeCast(*this, TD, Result);
+      }
+  }
+
   return CreateParsedType(Result, TLB.getTypeSourceInfo(Context, Result));
 }
 
@@ -3485,6 +3553,10 @@ bool UnnamedLocalNoLinkageFinder::VisitObjCInterfaceType(
 bool UnnamedLocalNoLinkageFinder::VisitObjCObjectPointerType(
                                                 const ObjCObjectPointerType *) {
   return false;
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitCLIArrayType(const CLIArrayType* T) {
+  return Visit(T->getElementType());
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitAtomicType(const AtomicType* T) {

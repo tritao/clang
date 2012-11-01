@@ -1302,6 +1302,12 @@ void MicrosoftCXXNameMangler::mangleType(const TagType *T) {
       Out << getASTContext().getTypeSizeInChars(
                 cast<EnumDecl>(T->getDecl())->getIntegerType()).getQuantity();
       break;
+    default:
+      DiagnosticsEngine &Diags = Context.getDiags();
+      unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                        "cannot mangle this tag type kind yet");
+      Diags.Report(DiagID);
+      break;
   }
   mangleName(T->getDecl());
 }
@@ -1639,6 +1645,15 @@ void MicrosoftCXXNameMangler::mangleType(const AtomicType *T,
     "cannot mangle this C11 atomic type yet");
   Diags.Report(Range.getBegin(), DiagID)
     << Range;
+}
+
+// C++/CLI extensions
+void MicrosoftCXXNameMangler::mangleType(const CLIArrayType *T,
+                                         SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                   "cannot mangle C++/CLI types");
+  Diags.Report(Range.getBegin(), DiagID);
 }
 
 void MicrosoftMangleContext::mangleName(const NamedDecl *D,

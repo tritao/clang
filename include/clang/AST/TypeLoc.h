@@ -1835,6 +1835,13 @@ public:
   }
 };
 
+// C++/CLI Type Locs
+
+/// \brief Wrapper for source info for record types.
+class CLIArrayTypeLoc : public InheritingConcreteTypeLoc<RecordTypeLoc,
+                                                         CLIArrayTypeLoc,
+                                                         CLIArrayType> {
+};
 
 }
 

@@ -87,6 +87,7 @@ NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Decltype, Type)
 NON_CANONICAL_UNLESS_DEPENDENT_TYPE(UnaryTransform, Type)
 ABSTRACT_TYPE(Tag, Type)
 TYPE(Record, TagType)
+TYPE(CLIArray, RecordType)
 TYPE(Enum, TagType)
 NON_CANONICAL_TYPE(Elaborated, Type)
 NON_CANONICAL_TYPE(Attributed, Type)
@@ -102,11 +103,10 @@ DEPENDENT_TYPE(PackExpansion, Type)
 TYPE(ObjCObject, Type)
 TYPE(ObjCInterface, ObjCObjectType)
 TYPE(ObjCObjectPointer, Type)
-TYPE(Atomic, Type)
-
 // C++/CLI types
 TYPE(Handle, Type)
 TYPE(TrackingReference, ReferenceType)
+TYPE(Atomic, Type)
 
 #ifdef LAST_TYPE
 LAST_TYPE(Atomic)

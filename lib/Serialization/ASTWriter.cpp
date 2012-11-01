@@ -406,6 +406,12 @@ ASTTypeWriter::VisitObjCObjectPointerType(const ObjCObjectPointerType *T) {
 }
 
 void
+ASTTypeWriter::VisitCLIArrayType(const CLIArrayType *T) {
+  Writer.AddTypeRef(T->getPointeeType(), Record);
+  Code = TYPE_CLI_ARRAY;
+}
+
+void
 ASTTypeWriter::VisitAtomicType(const AtomicType *T) {
   Writer.AddTypeRef(T->getValueType(), Record);
   Code = TYPE_ATOMIC;
@@ -625,6 +631,8 @@ void TypeLocWriter::VisitObjCObjectTypeLoc(ObjCObjectTypeLoc TL) {
 }
 void TypeLocWriter::VisitObjCObjectPointerTypeLoc(ObjCObjectPointerTypeLoc TL) {
   Writer.AddSourceLocation(TL.getStarLoc(), Record);
+}
+void TypeLocWriter::VisitCLIArrayTypeLoc(CLIArrayTypeLoc TL) {
 }
 void TypeLocWriter::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   Writer.AddSourceLocation(TL.getKWLoc(), Record);

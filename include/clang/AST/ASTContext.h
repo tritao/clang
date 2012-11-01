@@ -1033,6 +1033,11 @@ public:
   /// \brief Return a ObjCObjectPointerType type for the given ObjCObjectType.
   QualType getObjCObjectPointerType(QualType OIT) const;
 
+  /// \brief Return a CLIArrayType type.
+  QualType getCLIArrayType(QualType ElementType,
+                           unsigned Dimensions,
+                           const RecordDecl *Decl) const;
+
   /// \brief GCC extension.
   QualType getTypeOfExprType(Expr *e) const;
   QualType getTypeOfType(QualType t) const;
