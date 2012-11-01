@@ -16,6 +16,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/TypeLoc.h"
 using namespace clang;
 
@@ -139,12 +140,12 @@ SourceLocation CXXNewExpr::getEndLoc() const {
   llvm_unreachable("bogus initialization style");
 }
 
-// CXXCLIGCNewExpr
-CXXCLIGCNewExpr::CXXCLIGCNewExpr(ASTContext &C,
+// CLIGCNewExpr
+CLIGCNewExpr::CLIGCNewExpr(ASTContext &C,
              CXXNewExpr::InitializationStyle initializationStyle,
              Expr *initializer, QualType ty, TypeSourceInfo *allocatedTypeInfo,
              SourceLocation startLoc, SourceRange directInitRange)
-  : Expr(CXXCLIGCNewExprClass, ty, VK_RValue, OK_Ordinary,
+  : Expr(CLIGCNewExprClass, ty, VK_RValue, OK_Ordinary,
          ty->isDependentType(), ty->isDependentType(),
          ty->isInstantiationDependentType(),
          ty->containsUnexpandedParameterPack()),
@@ -165,7 +166,7 @@ CXXCLIGCNewExpr::CXXCLIGCNewExpr(ASTContext &C,
   }
 }
 
-SourceLocation CXXCLIGCNewExpr::getEndLoc() const {
+SourceLocation CLIGCNewExpr::getEndLoc() const {
   switch (getInitializationStyle()) {
   case CXXNewExpr::NoInit:
     return AllocatedTypeInfo->getTypeLoc().getEndLoc();

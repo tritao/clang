@@ -1451,7 +1451,7 @@ void StmtPrinter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   PrintExpr(E->getArgument());
 }
 
-void StmtPrinter::VisitCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
+void StmtPrinter::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
   OS << "gcnew ";
   std::string TypeS;
   E->getAllocatedType().getAsStringInternal(TypeS, Policy);

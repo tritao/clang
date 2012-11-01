@@ -1256,7 +1256,7 @@ void ASTStmtWriter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   Code = serialization::EXPR_CXX_DELETE;
 }
 
-void ASTStmtWriter::VisitCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
+void ASTStmtWriter::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
   VisitExpr(E);
   Record.push_back(E->StoredInitializationStyle);
   Writer.AddTypeSourceInfo(E->getAllocatedTypeSourceInfo(), Record);

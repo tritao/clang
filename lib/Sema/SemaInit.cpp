@@ -2363,6 +2363,7 @@ DeclarationName InitializedEntity::getName() const {
   case EK_Result:
   case EK_Exception:
   case EK_New:
+  case EK_GCNew:
   case EK_Temporary:
   case EK_Base:
   case EK_Delegating:
@@ -2388,6 +2389,7 @@ DeclaratorDecl *InitializedEntity::getDecl() const {
   case EK_Result:
   case EK_Exception:
   case EK_New:
+  case EK_GCNew:
   case EK_Temporary:
   case EK_Base:
   case EK_Delegating:
@@ -2412,6 +2414,7 @@ bool InitializedEntity::allowsNRVO() const {
   case EK_Parameter:
   case EK_Member:
   case EK_New:
+  case EK_GCNew:
   case EK_Temporary:
   case EK_Base:
   case EK_Delegating:
@@ -4263,6 +4266,7 @@ getAssignmentAction(const InitializedEntity &Entity) {
   switch(Entity.getKind()) {
   case InitializedEntity::EK_Variable:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Exception:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
@@ -4302,6 +4306,7 @@ static bool shouldBindAsTemporary(const InitializedEntity &Entity) {
   case InitializedEntity::EK_Member:
   case InitializedEntity::EK_Result:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Variable:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
@@ -4327,6 +4332,7 @@ static bool shouldDestroyTemporary(const InitializedEntity &Entity) {
     case InitializedEntity::EK_Member:
     case InitializedEntity::EK_Result:
     case InitializedEntity::EK_New:
+    case InitializedEntity::EK_GCNew:
     case InitializedEntity::EK_Base:
     case InitializedEntity::EK_Delegating:
     case InitializedEntity::EK_VectorElement:
@@ -4411,6 +4417,7 @@ static SourceLocation getInitializationLoc(const InitializedEntity &Entity,
   case InitializedEntity::EK_Parameter:
   case InitializedEntity::EK_Temporary:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
   case InitializedEntity::EK_VectorElement:
@@ -4781,6 +4788,7 @@ InitializedEntityOutlivesFullExpression(const InitializedEntity &Entity) {
   case InitializedEntity::EK_Exception:
   case InitializedEntity::EK_Member:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
     return true;

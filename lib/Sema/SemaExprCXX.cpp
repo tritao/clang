@@ -20,11 +20,13 @@
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/TemplateDeduction.h"
+#include "clang/Sema/SemaCXXCLI.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/PartialDiagnostic.h"
@@ -1003,6 +1005,19 @@ Sema::ActOnCXXNew(SourceLocation StartLoc, bool UseGlobal,
   if (D.isInvalidType())
     return ExprError();
 
+  if (getLangOpts().CPlusPlusCLI) {
+    if (CXXRecordDecl *RD = AllocType->getAsCXXRecordDecl()) {
+      if (RD->isCLIRecord() && (RD->getCLIData()->Type != CLI_ValueType)) {
+        DiagnosticsEngine &DE = getDiagnostics();
+        Diag(StartLoc, DE.getCustomDiagID(DiagnosticsEngine::Error,
+          "cannot allocate managed type using 'new', use 'gcnew'"));
+          // FIXME: Add a fix it hint for gcnew
+          // << FixItHint::CreateReplacement());
+        return ExprError();
+      }
+    }
+  }
+
   SourceRange DirectInitRange;
   if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer))
     DirectInitRange = List->getSourceRange();
@@ -1086,7 +1101,46 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
       Inits = List->getExprs();
       NumInits = List->getNumExprs();
     }
+  } else if (CXXConstructExpr *CCE = dyn_cast<CXXConstructExpr>(Initializer)){
+    if (!isa<CXXTemporaryObjectExpr>(CCE)) {
+      // Can happen in template instantiation. Since this is just an implicit
+      // construction, we just take it apart and rebuild it.
+      Inits = CCE->getArgs();
+      NumInits = CCE->getNumArgs();
+    }
   }
+
+#if 0
+  // C++11 [decl.spec.auto]p6. Deduce the type which 'auto' stands in for.
+  AutoType *AT = 0;
+  if (TypeMayContainAuto &&
+      (AT = AllocType->getContainedAutoType()) && !AT->isDeduced()) {
+    if (initStyle == CXXNewExpr::NoInit || NumInits == 0)
+      return ExprError(Diag(StartLoc, diag::err_auto_new_requires_ctor_arg)
+                       << AllocType << TypeRange);
+    if (initStyle == CXXNewExpr::ListInit)
+      return ExprError(Diag(Inits[0]->getLocStart(),
+                            diag::err_auto_new_requires_parens)
+                       << AllocType << TypeRange);
+    if (NumInits > 1) {
+      Expr *FirstBad = Inits[1];
+      return ExprError(Diag(FirstBad->getLocStart(),
+                            diag::err_auto_new_ctor_multiple_expressions)
+                       << AllocType << TypeRange);
+    }
+    Expr *Deduce = Inits[0];
+    TypeSourceInfo *DeducedType = 0;
+    if (DeduceAutoType(AllocTypeInfo, Deduce, DeducedType) == DAR_Failed)
+      return ExprError(Diag(StartLoc, diag::err_auto_new_deduction_failure)
+                       << AllocType << Deduce->getType()
+                       << TypeRange << Deduce->getSourceRange());
+    if (!DeducedType)
+      return ExprError();
+
+    AllocTypeInfo = DeducedType;
+    AllocType = AllocTypeInfo->getType();
+  }
+#endif
 
   if (CheckCXXCLIAllocatedType(AllocType, TypeRange.getBegin(), TypeRange))
     return ExprError();
@@ -1097,6 +1151,7 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
         << /*at end of FE*/0 << Inits[0]->getSourceRange();
   }
 
+  assert(AllocType->isRecordType() || isa<CLIArrayType>(AllocType));
   QualType ResultType = Context.getHandleType(AllocType);
 
   QualType InitType = AllocType;
@@ -1133,7 +1188,7 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
                                                  DirectInitRange.getEnd());
 
     InitializedEntity Entity
-      = InitializedEntity::InitializeNew(StartLoc, InitType);
+      = InitializedEntity::InitializeGCNew(StartLoc, InitType);
     InitializationSequence InitSeq(*this, Entity, Kind, Inits, NumInits);
     ExprResult FullInit = InitSeq.Perform(*this, Entity, Kind,
                                           MultiExprArg(Inits, NumInits));
@@ -1148,36 +1203,34 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
 
     Initializer = FullInit.take();
   }
-#endif
 
-  return Owned(new (Context) CXXCLIGCNewExpr(Context, initStyle, Initializer,
+  return Owned(new (Context) CLIGCNewExpr(Context, initStyle, Initializer,
                                         ResultType, AllocTypeInfo,
                                         StartLoc, DirectInitRange));
 }
 
 /// \brief Checks that a type is suitable as the allocated type
 /// in a gcnew-expression. For this it has to be a managed type,
-/// (reference or value type) or convertible to one (builtin).
+/// (handle or value type).
 bool Sema::CheckCXXCLIAllocatedType(QualType AllocType, SourceLocation Loc,
                               SourceRange R) {
-  if (AllocType->isFunctionType())
-    return Diag(Loc, diag::err_bad_new_type) << AllocType << 0 << R;
-  else if (AllocType->isReferenceType())
-    return Diag(Loc, diag::err_bad_new_type) << AllocType << 1 << R;
-  else if (!AllocType->isDependentType() &&
+  unsigned Id = getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+      "allocated object is not of managed type");
+
+  if (isa<CLIArrayType>(AllocType))
+    return false;
+
+  CXXRecordDecl *RD = AllocType->getAsCXXRecordDecl();
+  if (!RD || !RD->isCLIRecord())
+    return Diag(Loc, Id);
+
+  if (!AllocType->isDependentType() &&
            RequireCompleteType(Loc, AllocType, diag::err_new_incomplete_type,R))
     return true;
   else if (RequireNonAbstractType(Loc, AllocType,
                                   diag::err_allocation_of_abstract_type))
     return true;
-  else if (AllocType->isVariablyModifiedType())
-    return Diag(Loc, diag::err_variably_modified_new_type) << AllocType;
-  else if (unsigned AddressSpace = AllocType.getAddressSpace())
-    return Diag(Loc, diag::err_address_space_qualified_new)
-      << AllocType.getUnqualifiedType() << AddressSpace;
-  
-  // TODO: Check if the type is managed.
-  
+
   return false;
 }
 

@@ -849,7 +849,7 @@ void StmtProfiler::VisitCXXNewExpr(const CXXNewExpr *S) {
   ID.AddInteger(S->getInitializationStyle());
 }
 
-void StmtProfiler::VisitCXXCLIGCNewExpr(const CXXCLIGCNewExpr *S) {
+void StmtProfiler::VisitCLIGCNewExpr(const CLIGCNewExpr *S) {
   VisitExpr(S);
   VisitType(S->getAllocatedType());
   ID.AddInteger(S->getInitializationStyle());

@@ -57,6 +57,8 @@ public:
     /// \brief The entity being initialized is an object (or array of
     /// objects) allocated via new.
     EK_New,
+    /// \brief The entity being initialized is an object allocated via gcnew.
+    EK_GCNew,
     /// \brief The entity being initialized is a temporary object.
     EK_Temporary,
     /// \brief The entity being initialized is a base member subobject.
@@ -220,10 +222,15 @@ public:
   }
 
   /// \brief Create the initialization entity for an object allocated via new.
+  static InitializedEntity InitializeGCNew(SourceLocation NewLoc, QualType Type) {
+    return InitializedEntity(EK_GCNew, NewLoc, Type);
+  }
+
+  /// \brief Create the initialization entity for an object allocated via gcnew.
   static InitializedEntity InitializeNew(SourceLocation NewLoc, QualType Type) {
     return InitializedEntity(EK_New, NewLoc, Type);
   }
-  
+
   /// \brief Create the initialization entity for a temporary.
   static InitializedEntity InitializeTemporary(QualType Type) {
     InitializedEntity Result(EK_Temporary, SourceLocation(), Type);

@@ -139,7 +139,7 @@ def LambdaExpr : DStmt<Expr>;
 //def CXXCLIForEachStmt : Stmt;
 
 // C++/CLI Expressions.
-def CXXCLIGCNewExpr : DStmt<Expr>;
+def CLIGCNewExpr : DStmt<Expr>;
 //def CXXCLISafeCastExpr : DStmt<CXXNamedCastExpr>;
 
 // Obj-C Expressions.

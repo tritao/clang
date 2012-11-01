@@ -2391,7 +2391,7 @@ recurse:
   case Expr::ImplicitValueInitExprClass:
   case Expr::ParenListExprClass:
   case Expr::LambdaExprClass:
-  case Expr::CXXCLIGCNewExprClass:
+  case Expr::CLIGCNewExprClass:
     llvm_unreachable("unexpected statement kind");
 
   // FIXME: invent manglings for all these.

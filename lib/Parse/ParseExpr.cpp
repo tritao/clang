@@ -1183,6 +1183,9 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_delete: // [C++] delete-expression
     return ParseCXXDeleteExpression(false, Tok.getLocation());
 
+  case tok::kw_gcnew: // [C++/CLI] gcnew-expression
+    return ParseCLIGCNewExpression(Tok.getLocation());
+
   case tok::kw_noexcept: { // [C++0x] 'noexcept' '(' expression ')'
     Diag(Tok, diag::warn_cxx98_compat_noexcept_expr);
     SourceLocation KeyLoc = ConsumeToken();

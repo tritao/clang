@@ -507,6 +507,11 @@ public:
   }
   Value *VisitAsTypeExpr(AsTypeExpr *CE);
   Value *VisitAtomicExpr(AtomicExpr *AE);
+
+  // C++/CLI
+  Value *VisitCLIGCNewExpr(const CLIGCNewExpr *E) {
+    return CGF.EmitCLIGCNewExpr(E);
+  }
 };
 }  // end anonymous namespace.
 

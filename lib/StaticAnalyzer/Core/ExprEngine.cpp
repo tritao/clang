@@ -24,6 +24,7 @@
 #include "clang/AST/ParentMap.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/PrettyStackTrace.h"
@@ -759,10 +760,10 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       break;
     }
 
-    case Stmt::CXXCLIGCNewExprClass: {
+    case Stmt::CLIGCNewExprClass: {
       Bldr.takeNodes(Pred);
-      const CXXCLIGCNewExpr *NE = cast<CXXCLIGCNewExpr>(S);
-      //VisitCXXCLIGCNewExpr(NE, Pred, Dst);
+      //FIXME:
+      //VisitCLIGCNewExpr(NE, Pred, Dst);
       Bldr.addNodes(Dst);
       break;
     }

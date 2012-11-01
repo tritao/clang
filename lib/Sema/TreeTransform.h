@@ -2017,7 +2017,7 @@ public:
   ///
   /// By default, performs semantic analysis to build the new expression.
   /// Subclasses may override this routine to provide different behavior.
-  ExprResult RebuildCXXCLIGCNewExpr(SourceLocation StartLoc,
+  ExprResult RebuildCLIGCNewExpr(SourceLocation StartLoc,
                                QualType AllocatedType,
                                TypeSourceInfo *AllocatedTypeInfo,
                                SourceRange DirectInitRange,
@@ -7408,7 +7408,7 @@ TreeTransform<Derived>::TransformCXXDeleteExpr(CXXDeleteExpr *E) {
 
 template<typename Derived>
 ExprResult
-TreeTransform<Derived>::TransformCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
+TreeTransform<Derived>::TransformCLIGCNewExpr(CLIGCNewExpr *E) {
   // Transform the type that we're allocating
   TypeSourceInfo *AllocTypeInfo
     = getDerived().TransformType(E->getAllocatedTypeSourceInfo());
@@ -7431,7 +7431,7 @@ TreeTransform<Derived>::TransformCXXCLIGCNewExpr(CXXCLIGCNewExpr *E) {
 
   QualType AllocType = AllocTypeInfo->getType();
 
-  return getDerived().RebuildCXXCLIGCNewExpr(E->getLocStart(),
+  return getDerived().RebuildCLIGCNewExpr(E->getLocStart(),
                                         AllocType,
                                         AllocTypeInfo,
                                         E->getDirectInitRange(),
