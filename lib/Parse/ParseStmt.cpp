@@ -62,6 +62,7 @@ using namespace clang;
 ///         while-statement
 ///         do-statement
 ///         for-statement
+///         [CLI] for-each-statement
 ///
 ///       expression-statement:
 ///         expression[opt] ';'
@@ -1255,16 +1256,29 @@ StmtResult Parser::ParseDoStatement() {
 /// [C++0x] for-range-initializer:
 /// [C++0x]   expression
 /// [C++0x]   braced-init-list            [TODO]
+/// [CLI]   for-each-statement:
+///            'for' 'each' '(' type-specifier-seq declarator 'in' 
+///                                     assignment-expression ')' statement
+///           
 StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   assert(Tok.is(tok::kw_for) && "Not a for stmt!");
   SourceLocation ForLoc = ConsumeToken();  // eat the 'for'.
+
+  bool CLIForEach = false;
+  SourceLocation EachLoc;
+  if (getLangOpts().CPlusPlusCLI) {
+    if (Tok.is(tok::identifier)
+        && Tok.getIdentifierInfo() == CLIContextKeywords[cli_each]) {
+      EachLoc = ConsumeToken();
+      CLIForEach = true;
+    }
+  }
 
   if (Tok.isNot(tok::l_paren)) {
     Diag(Tok, diag::err_expected_lparen_after) << "for";
     SkipUntil(tok::semi);
     return StmtError();
   }
-
   bool C99orCXXorObjC = getLangOpts().C99 || getLangOpts().CPlusPlus ||
     getLangOpts().ObjC1;
 
@@ -1317,8 +1331,41 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   ParsedAttributesWithRange attrs(AttrFactory);
   MaybeParseCXX0XAttributes(attrs);
 
+  DeclSpec DS(AttrFactory); // type-specifier-seq
+  Declarator DeclaratorInfo(DS, Declarator::ForContext); // declarator
+  SourceLocation InLoc;
+  ExprResult AssignmentExpr;
+  DeclResult CLILoopVar;
+
+  if (CLIForEach) {
+      // Parse the first declaration part of the statement.
+      ParseSpecifierQualifierList(DS, AS_none, DSC_type_specifier);
+      ParseDeclarator(DeclaratorInfo);
+
+      CLILoopVar = Actions.ActOnDeclarator(getCurScope(), DeclaratorInfo);
+
+      // Parse the 'in' context specific keyword.
+      if (Tok.is(tok::identifier)
+          && Tok.getIdentifierInfo() == CLIContextKeywords[cli_in]) {
+        InLoc = ConsumeToken();
+      } else {
+        Diag(Tok, diag::err_cli_expected_kw_in_for_each);
+        SkipUntil(tok::r_paren);
+        return StmtError();
+      }
+
+      // Parse the second part of the for statement.
+      EnterExpressionEvaluationContext Unevaluated(
+                                         Actions, Sema::PotentiallyEvaluated);
+      AssignmentExpr = ParseAssignmentExpression();
+
+      if (AssignmentExpr.isInvalid()) {
+        // TODO: Emit diagnostic.
+        SkipUntil(tok::r_paren);
+        return StmtError();
+      }
   // Parse the first part of the for specifier.
-  if (Tok.is(tok::semi)) {  // for (;
+  } else if (Tok.is(tok::semi)) {  // for (;
     ProhibitAttributes(attrs);
     // no first part, eat the ';'.
     ConsumeToken();
@@ -1406,7 +1453,7 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
       }
     }
   }
-  if (!ForEach && !ForRange) {
+  if (!ForEach && !ForRange && !CLIForEach) {
     assert(!SecondPart.get() && "Shouldn't have a second expression yet.");
     // Parse the second part of the for specifier.
     if (Tok.is(tok::semi)) {  // for (...;;
@@ -1503,6 +1550,11 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
 
   if (ForRange)
     return Actions.FinishCXXForRangeStmt(ForRangeStmt.take(), Body.take());
+
+  if (CLIForEach)
+    return  Actions.ActOnCLIForEachStmt(ForLoc, EachLoc, T.getOpenLocation(),
+         InLoc, CLILoopVar.take(), AssignmentExpr.take(), T.getCloseLocation(),
+         Body.take());
 
   return Actions.ActOnForStmt(ForLoc, T.getOpenLocation(), FirstPart.take(),
                               SecondPart, SecondVar, ThirdPart,

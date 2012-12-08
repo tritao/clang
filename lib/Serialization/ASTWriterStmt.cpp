@@ -1042,6 +1042,16 @@ void ASTStmtWriter::VisitCXXForRangeStmt(CXXForRangeStmt *S) {
   Code = serialization::STMT_CXX_FOR_RANGE;
 }
 
+void ASTStmtWriter::VisitCLIForEachStmt(CLIForEachStmt *S) {
+  VisitStmt(S);
+  Writer.AddSourceLocation(S->getForLoc(), Record);
+  Writer.AddSourceLocation(S->getEachLoc(), Record);
+  Writer.AddSourceLocation(S->getInLoc(), Record);
+  Writer.AddSourceLocation(S->getRParenLoc(), Record);
+  Writer.AddStmt(S->getBody());
+  Code = serialization::STMT_CLI_FOR_EACH;
+}
+
 void ASTStmtWriter::VisitMSDependentExistsStmt(MSDependentExistsStmt *S) {
   VisitStmt(S);
   Writer.AddSourceLocation(S->getKeywordLoc(), Record);

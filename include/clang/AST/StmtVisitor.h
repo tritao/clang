@@ -15,8 +15,10 @@
 #define LLVM_CLANG_AST_STMTVISITOR_H
 
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 
 namespace clang {

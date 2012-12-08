@@ -1074,6 +1074,15 @@ void ASTStmtReader::VisitCXXForRangeStmt(CXXForRangeStmt *S) {
   S->setBody(Reader.ReadSubStmt());
 }
 
+void ASTStmtReader::VisitCLIForEachStmt(CLIForEachStmt *S) {
+  VisitStmt(S);
+  S->setForLoc(ReadSourceLocation(Record, Idx));
+  S->setEachLoc(ReadSourceLocation(Record, Idx));
+  S->setInLoc(ReadSourceLocation(Record, Idx));
+  S->setRParenLoc(ReadSourceLocation(Record, Idx));
+  S->setBody(Reader.ReadSubStmt());
+}
+
 void ASTStmtReader::VisitMSDependentExistsStmt(MSDependentExistsStmt *S) {
   VisitStmt(S);
   S->KeywordLoc = ReadSourceLocation(Record, Idx);
@@ -2036,6 +2045,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case STMT_CXX_FOR_RANGE:
       S = new (Context) CXXForRangeStmt(Empty);
+      break;
+
+    case STMT_CLI_FOR_EACH:
+      S = new (Context) CLIForEachStmt(Empty);
       break;
 
     case STMT_MS_DEPENDENT_EXISTS:

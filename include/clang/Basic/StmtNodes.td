@@ -136,7 +136,7 @@ def MaterializeTemporaryExpr : DStmt<Expr>;
 def LambdaExpr : DStmt<Expr>;
 
 // C++/CLI Statements.
-//def CXXCLIForEachStmt : Stmt;
+def CLIForEachStmt : Stmt;
 
 // C++/CLI Expressions.
 def CLIGCNewExpr : DStmt<Expr>;

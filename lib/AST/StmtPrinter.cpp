@@ -321,6 +321,18 @@ void StmtPrinter::VisitCXXForRangeStmt(CXXForRangeStmt *Node) {
   Indent() << "}\n";
 }
 
+void StmtPrinter::VisitCLIForEachStmt(CLIForEachStmt *Node) {
+  Indent() << "for each(";
+  PrintingPolicy SubPolicy(Policy);
+  SubPolicy.SuppressInitializers = true;
+  Node->getLoopVariable()->print(OS, SubPolicy, IndentLevel);
+  OS << " in ";
+  //PrintExpr(Node->getRangeInit());
+  OS << ") {\n";
+  PrintStmt(Node->getBody());
+  Indent() << "}\n";
+}
+
 void StmtPrinter::VisitMSDependentExistsStmt(MSDependentExistsStmt *Node) {
   Indent();
   if (Node->isIfExists())

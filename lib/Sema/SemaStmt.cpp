@@ -16,6 +16,7 @@
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclObjC.h"
@@ -24,6 +25,7 @@
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Basic/TargetInfo.h"
@@ -1417,6 +1419,103 @@ Sema::ActOnForStmt(SourceLocation ForLoc, SourceLocation LParenLoc,
                                      SecondResult.take(), ConditionVar,
                                      Third, Body, ForLoc, LParenLoc,
                                      RParenLoc));
+}
+
+static bool CheckCLICollectionType(Sema &S, QualType Type) {
+  if (Type->getAs<CLIArrayType>())
+    return false;
+  else if (const CXXRecordDecl *RD = Type->getAsCXXRecordDecl()) {
+    if (!RD->isCLIRecord())
+       return true;
+
+    CLISemaContext *CLICtx = S.getCLIContext();
+    CLIDefinitionData *CLIData = RD->getCLIData();
+
+    // "A type is said to be a collection type if it implements the
+    // System::Collections::IEnumerable interface, or implements
+    // System::Collections::Generic::IEnumerable interface."
+  
+    for (CLIDefinitionData::InterfacesVector::iterator it =
+        CLIData->Interfaces.begin(); it != CLIData->Interfaces.end();
+        ++it) {
+      const CXXBaseSpecifier *BaseSpec = *it;
+      CXXRecordDecl *Base = BaseSpec->getType()->getAsCXXRecordDecl();
+      assert(Base->isCLIRecord());
+
+      if (Base == CLICtx->IEnumerable || Base == CLICtx->GenericIEnumerable)
+        return false;
+    }
+
+    // "Or implements the collection pattern by meeting all of the
+    // following criteria:"
+    //
+    // e = c->GetEnumerator()
+    // e->MoveNext()
+    // e->Current 
+  
+    // FIXME: Check for collection pattern interfaces.
+  }
+
+  return true;
+}
+
+StmtResult
+Sema::ActOnCLIForEachStmt(SourceLocation ForLoc, SourceLocation EachLoc,
+                              SourceLocation LParenLoc, SourceLocation InLoc,
+                              Decl *LoopVar, Expr *Assignment,
+                              SourceLocation RParenLoc, Stmt *Body) {
+  if (!getLangOpts().CPlusPlusCLI) {
+    // FIXME: Emit diagnostic
+    return StmtResult();
+  }
+
+  VarDecl *VD = dyn_cast<VarDecl>(LoopVar);
+
+  if (VD && VD->isLocalVarDecl() && !VD->hasLocalStorage())
+    VD = 0;
+  if (VD == 0) {
+    Diag(ForLoc, diag::err_non_variable_decl_in_for);
+    return StmtError();
+  }
+
+  QualType AssignType = Assignment->getType();
+
+  // "The type of assignment-expression shall be a collection type
+  // (as defined below), and it shall be possible to convert from the 
+  // element type of the collection to the type of the iteration variable
+  // using safe_cast. If assignment-expression has the value nullptr,
+  // a System::NullReferenceException is thrown."
+
+  const HandleType* HT = AssignType->getAs<HandleType>();
+  if (!HT) {
+    Diag(Assignment->getLocStart(), getDiagnostics().getCustomDiagID(
+      DiagnosticsEngine::Error, "expected a CLI handle type"));
+    return StmtError();
+  }
+
+  QualType Type = HT->getPointeeType();
+  assert(!Type.isNull());
+
+  if (CheckCLICollectionType(*this, Type)) {
+    Diag(Assignment->getLocStart(), getDiagnostics().getCustomDiagID(
+      DiagnosticsEngine::Error, "expected a CLI collection type"));
+    return StmtError();
+  }
+
+  if (const CLIArrayType *Arr = Type->getAs<CLIArrayType>()) {
+    // "The System::Array type (§24.1.1) is a collection type, and since
+    // all CLI array types derive from System::Array, any CLI array type
+    // expression is permitted in a for each statement."
+    Type = Arr->getElementType();
+  }
+
+  if (isa<NullStmt>(Body))
+    getCurCompoundScope().setHasEmptyLoopBodies();
+
+  CLIForEachStmt *Stmt = new(Context) CLIForEachStmt(VD, Assignment,
+    Body, ForLoc, EachLoc, InLoc, RParenLoc);
+
+  return Owned(Stmt);
 }
 
 /// In an Objective C collection iteration statement:
