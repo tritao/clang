@@ -6779,6 +6779,13 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   }
   case Expr::CXXDefaultArgExprClass:
     return CheckICE(cast<CXXDefaultArgExpr>(E)->getExpr(), Ctx);
+  case Expr::CLIValueClassInitExprClass: {
+    const CLIValueClassInitExpr *VE = cast<CLIValueClassInitExpr>(E);
+    if (VE->getInitKind() == CLI_VCIK_CopyInit)
+      return CheckICE(VE->getInitExpr(), Ctx);
+    else 
+      return NoDiag();
+  }
   case Expr::ChooseExprClass: {
     return CheckICE(cast<ChooseExpr>(E)->getChosenSubExpr(Ctx), Ctx);
   }

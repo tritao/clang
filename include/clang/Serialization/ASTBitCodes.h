@@ -1203,7 +1203,10 @@ namespace clang {
       EXPR_SUBST_NON_TYPE_TEMPLATE_PARM_PACK,// SubstNonTypeTemplateParmPackExpr
       EXPR_FUNCTION_PARM_PACK,    // FunctionParmPackExpr
       EXPR_MATERIALIZE_TEMPORARY, // MaterializeTemporaryExpr
-      
+
+      // C++/CLI
+      EXPR_CLI_VALUE_CLASS_INIT,  // CLIValueClassInitExpr
+
       // CUDA
       EXPR_CUDA_KERNEL_CALL,       // CUDAKernelCallExpr      
 

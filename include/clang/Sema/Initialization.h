@@ -609,6 +609,10 @@ public:
     /// \brief An initialization that "converts" an Objective-C object
     /// (not a point to an object) to another Objective-C object type.
     SK_ObjCObjectConversion,
+    /// \brief A zero-initialization of a C++/CLI value type.
+    SK_CLIValueTypeZeroInit,
+    /// \brief A copy-initialization of a C++/CLI value type.
+    SK_CLIValueTypeCopyInit,
     /// \brief Array initialization (from an array rvalue).
     /// This is a GNU C extension.
     SK_ArrayInit,
@@ -658,6 +662,9 @@ public:
       /// \brief When Kind = SK_RewrapInitList, the syntactic form of the
       /// wrapping list.
       InitListExpr *WrappingSyntacticList;
+
+      /// \brief When Kind = SK_CLIValueTypeCopyInit, the copy value expression.
+      Expr *InitExpr;
     };
 
     void Destroy();
@@ -933,6 +940,12 @@ public:
   /// \brief Add an Objective-C object conversion step, which is
   /// always a no-op.
   void AddObjCObjectConversionStep(QualType T);
+
+  /// \brief Add an C++/CLI value type zero-initialization step.
+  void AddCLIValueZeroInitializationStep(QualType T);
+
+  /// \brief Add an C++/CLI value type copy-initialization step.
+  void AddCLIValueCopyInitializationStep(QualType T, Expr *E);
 
   /// \brief Add an array initialization step.
   void AddArrayInitStep(QualType T);

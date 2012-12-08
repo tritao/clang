@@ -19,6 +19,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/TypeLoc.h"
 #include "llvm/ADT/APInt.h"
@@ -2455,6 +2456,8 @@ void InitializationSequence::Step::Destroy() {
   case SK_CAssignment:
   case SK_StringInit:
   case SK_ObjCObjectConversion:
+  case SK_CLIValueTypeZeroInit:
+  case SK_CLIValueTypeCopyInit:
   case SK_ArrayInit:
   case SK_ParenthesizedArrayInit:
   case SK_PassByIndirectCopyRestore:
@@ -2649,6 +2652,22 @@ void InitializationSequence::AddObjCObjectConversionStep(QualType T) {
   Step S;
   S.Kind = SK_ObjCObjectConversion;
   S.Type = T;
+  Steps.push_back(S);
+}
+
+void InitializationSequence::AddCLIValueZeroInitializationStep(QualType T) {
+  Step S;
+  S.Kind = SK_CLIValueTypeZeroInit;
+  S.Type = T;
+  Steps.push_back(S);
+}
+
+void InitializationSequence::AddCLIValueCopyInitializationStep(QualType T,
+                                                               Expr *E) {
+  Step S;
+  S.Kind = SK_CLIValueTypeCopyInit;
+  S.Type = T;
+  S.InitExpr = E;
   Steps.push_back(S);
 }
 
@@ -2918,6 +2937,24 @@ static void TryConstructorInitialization(Sema &S,
     // Time to unwrap the init list.
     Args = ILE->getInits();
     NumArgs = ILE->getNumInits();
+  }
+
+  // C++/CLI 22.3.2:
+  //    - if T is a C++/CLI value class type, then we have to perform either
+  // zero or copy-initialization.
+  if (DestRecordType->isCLIValueType()) {
+    if (NumArgs == 0) {
+      // "every value class implicitly has a parameterless instance constructor,
+      // which always returns the value that results from setting all value type
+      // fields to their default value and all handle type fields to nullptr."
+      Sequence.AddCLIValueZeroInitializationStep(Entity.getType());
+      return;
+    } else if (NumArgs == 1 && Args[0]->getType()->isCLIValueType()) {
+      // "The copy construction semantics of a value class are always to bitwise
+      // copy all members of the value class"
+      Sequence.AddCLIValueCopyInitializationStep(Entity.getType(), Args[0]);
+      return;
+    }
   }
 
   // C++11 [over.match.list]p1:
@@ -4949,6 +4986,8 @@ InitializationSequence::Perform(Sema &S,
   case SK_ConstructorInitialization:
   case SK_ListConstructorCall:
   case SK_ZeroInitialization:
+  case SK_CLIValueTypeZeroInit:
+  case SK_CLIValueTypeCopyInit:
     break;
   }
 
@@ -5355,6 +5394,30 @@ InitializationSequence::Perform(Sema &S,
                           CK_ObjCObjectLValueCast,
                           CurInit.get()->getValueKind());
       break;
+
+    case SK_CLIValueTypeZeroInit: {
+      TypeSourceInfo *TSInfo = Entity.getTypeSourceInfo();
+      if (!TSInfo)
+        TSInfo = S.Context.getTrivialTypeSourceInfo(Step->Type,
+                                                    Kind.getRange().getBegin());
+      CurInit = S.Owned(new (S.Context) CLIValueClassInitExpr(TSInfo->getType(),
+                                                              TSInfo,
+                                                              CLI_VCIK_ZeroInit,
+                                                              /*InitExpr=*/0));
+      break;
+    }
+
+    case SK_CLIValueTypeCopyInit: {
+      TypeSourceInfo *TSInfo = Entity.getTypeSourceInfo();
+      if (!TSInfo)
+        TSInfo = S.Context.getTrivialTypeSourceInfo(Step->Type,
+                                                    Kind.getRange().getBegin());
+      CurInit = S.Owned(new (S.Context) CLIValueClassInitExpr(TSInfo->getType(),
+                                                              TSInfo,
+                                                              CLI_VCIK_CopyInit,
+                                                              Step->InitExpr));
+      break;
+    }
 
     case SK_ArrayInit:
       // Okay: we checked everything before creating this step. Note that
@@ -6066,6 +6129,14 @@ void InitializationSequence::dump(raw_ostream &OS) const {
 
     case SK_ObjCObjectConversion:
       OS << "Objective-C object conversion";
+      break;
+
+    case SK_CLIValueTypeZeroInit:
+      OS << "C++/CLI value type zero-initialization";
+      break;
+
+    case SK_CLIValueTypeCopyInit:
+      OS << "C++/CLI value type copy-initialization";
       break;
 
     case SK_ArrayInit:

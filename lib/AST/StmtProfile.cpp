@@ -855,6 +855,11 @@ void StmtProfiler::VisitCLIGCNewExpr(const CLIGCNewExpr *S) {
   ID.AddInteger(S->getInitializationStyle());
 }
 
+void StmtProfiler::VisitCLIValueClassInitExpr(const CLIValueClassInitExpr *S) {
+  VisitExpr(S);
+  ID.AddInteger(S->getInitKind());
+}
+
 void
 StmtProfiler::VisitCXXPseudoDestructorExpr(const CXXPseudoDestructorExpr *S) {
   VisitExpr(S);

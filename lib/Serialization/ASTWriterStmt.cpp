@@ -14,6 +14,7 @@
 #include "clang/Serialization/ASTWriter.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/StmtVisitor.h"
@@ -1262,7 +1263,15 @@ void ASTStmtWriter::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
   Writer.AddTypeSourceInfo(E->getAllocatedTypeSourceInfo(), Record);
   Writer.AddSourceLocation(E->getStartLoc(), Record);
   Writer.AddSourceRange(E->getDirectInitRange(), Record);
-  Code = serialization::EXPR_CXXCLI_GCNEW;
+  Code = serialization::EXPR_CLI_GCNEW;
+}
+
+void ASTStmtWriter::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  VisitExpr(E);
+  Writer.AddTypeSourceInfo(E->getTypeSourceInfo(), Record);
+  Record.push_back(E->getInitKind());
+  Writer.AddStmt(E->getInitExpr());
+  Code = serialization::EXPR_CLI_VALUE_CLASS_INIT;
 }
 
 void ASTStmtWriter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {

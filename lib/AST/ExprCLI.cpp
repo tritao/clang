@@ -19,3 +19,12 @@
 #include "clang/AST/TypeLoc.h"
 using namespace clang;
 
+
+// CLIValueClassInitExpr
+SourceRange CLIValueClassInitExpr::getSourceRange() const {
+  SourceLocation Start;
+  if (TypeInfo)
+    Start = TypeInfo->getTypeLoc().getBeginLoc();
+  return SourceRange(Start, TypeInfo->getTypeLoc().getEndLoc());
+}
+

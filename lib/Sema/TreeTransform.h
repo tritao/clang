@@ -20,6 +20,7 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
@@ -2027,6 +2028,17 @@ public:
                                  AllocatedTypeInfo,
                                  DirectInitRange,
                                  Initializer);
+  }
+
+  /// \brief Build a new C++/CLI value class initialization expression.
+  ///
+  /// By default, performs semantic analysis to build the new expression.
+  /// Subclasses may override this routine to provide different behavior.
+  ExprResult RebuildCLIValueClassInitExpr(TypeSourceInfo *TSInfo,
+                                          SourceLocation LParenLoc,
+                                          SourceLocation RParenLoc) {
+    // FIXME:
+    return ExprResult();
   }
 
   /// \brief Build a new unary type trait expression.
@@ -7436,6 +7448,22 @@ TreeTransform<Derived>::TransformCLIGCNewExpr(CLIGCNewExpr *E) {
                                         AllocTypeInfo,
                                         E->getDirectInitRange(),
                                         NewInit.take());
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  TypeSourceInfo *T = getDerived().TransformType(E->getTypeSourceInfo());
+  if (!T)
+    return ExprError();
+
+  if (!getDerived().AlwaysRebuild() &&
+      T == E->getTypeSourceInfo())
+    return SemaRef.Owned(E);
+
+  return getDerived().RebuildCLIValueClassInitExpr(T,
+                                         /*FIXME:*/T->getTypeLoc().getEndLoc(),
+                                                   SourceLocation());
 }
 
 template<typename Derived>

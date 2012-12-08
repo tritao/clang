@@ -2061,6 +2061,11 @@ DEF_TRAVERSE_STMT(CLIGCNewExpr, {
   TRY_TO(TraverseTypeLoc(S->getAllocatedTypeSourceInfo()->getTypeLoc()));
   })
 
+DEF_TRAVERSE_STMT(CLIValueClassInitExpr, {
+  // The child-iterator will pick up the other arguments.
+  TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
+  })
+
 DEF_TRAVERSE_STMT(OffsetOfExpr, {
     // The child-iterator will pick up the expression representing
     // the field.

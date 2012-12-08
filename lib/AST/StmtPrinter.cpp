@@ -1467,6 +1467,13 @@ void StmtPrinter::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
   }
 }
 
+void StmtPrinter::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  if (TypeSourceInfo *TSInfo = E->getTypeSourceInfo())
+    OS << TSInfo->getType().getAsString(Policy) << "()";
+  else
+    OS << E->getType().getAsString(Policy) << "()";
+}
+
 void StmtPrinter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   PrintExpr(E->getBase());
   if (E->isArrow())

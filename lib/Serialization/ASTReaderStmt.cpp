@@ -15,6 +15,7 @@
 #include "clang/Serialization/ASTReader.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/StmtVisitor.h"
 #include "llvm/ADT/SmallString.h"
@@ -1272,6 +1273,13 @@ void ASTStmtReader::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
   E->DirectInitRange = ReadSourceRange(Record, Idx);
 }
 
+void ASTStmtReader::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  VisitExpr(E);
+  E->TypeInfo = GetTypeSourceInfo(Record, Idx);
+  E->InitKind = (CLIValueClassInitKind) Record[Idx++];
+  E->InitExpr = Reader.ReadSubExpr();
+}
+
 void ASTStmtReader::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   VisitExpr(E);
 
@@ -2126,6 +2134,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_CXXCLI_GCNEW:
       S = new (Context) CLIGCNewExpr(Empty);
+      break;
+
+    case EXPR_CLI_VALUE_CLASS_INIT:
+      S = new (Context) CLIValueClassInitExpr(Empty);
       break;
 
     case EXPR_CXX_PSEUDO_DESTRUCTOR:

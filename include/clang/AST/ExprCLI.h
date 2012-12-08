@@ -15,6 +15,7 @@
 #define LLVM_CLANG_AST_EXPRCLI_H
 
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/Basic/ExpressionTraits.h"
@@ -103,6 +104,53 @@ public:
     return T->getStmtClass() == CLIGCNewExprClass;
   }
   static bool classof(const CLIGCNewExpr *) { return true; }
+};
+
+enum CLIValueClassInitKind {
+  CLI_VCIK_ZeroInit,
+  CLI_VCIK_CopyInit,
+};
+
+/// @brief A C++/CLI expression which represents zero or copy initialization
+/// of value classes.
+class CLIValueClassInitExpr : public Expr {
+  CLIValueClassInitKind InitKind;
+  Expr *InitExpr; // When InitKind == CLI_VCIK_CopyInit
+  TypeSourceInfo *TypeInfo;
+
+  friend class ASTStmtReader;
+
+public:
+  /// \brief Create an expression which represents zero or copy initialization
+  /// of value classes.
+  CLIValueClassInitExpr(QualType Type,
+                        TypeSourceInfo *TypeInfo,
+                        CLIValueClassInitKind InitKind,
+                        Expr *InitExpr) :
+    Expr(CLIValueClassInitExprClass, Type, VK_RValue, OK_Ordinary,
+         false, false, Type->isInstantiationDependentType(), false),
+    TypeInfo(TypeInfo), InitKind(InitKind), InitExpr(InitExpr) {}
+
+  explicit CLIValueClassInitExpr(EmptyShell Shell)
+    : Expr(CLIValueClassInitExprClass, Shell) { }
+
+  TypeSourceInfo *getTypeSourceInfo() const {
+    return TypeInfo;
+  }
+
+  CLIValueClassInitKind getInitKind() const { return InitKind; }
+
+  Expr * getInitExpr() const { return InitExpr; }
+
+  SourceRange getSourceRange() const LLVM_READONLY;
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CLIValueClassInitExprClass;
+  }
+  static bool classof(const CXXScalarValueInitExpr *) { return true; }
+
+  // Iterators
+  child_range children() { return child_range(); }
 };
 
 } // end namespace clang
