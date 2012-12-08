@@ -1067,8 +1067,14 @@ void EmitClangAttrTemplateInstantiate(RecordKeeper &Records, raw_ostream &OS) {
     }
     OS << ");\n    }\n";
   }
-  OS << "  } // end switch\n"
-     << "  llvm_unreachable(\"Unknown attribute!\");\n"
+  OS << "  } // end switch\n";
+
+  // Emit a last resort Sema call to try to instantiate the unknown attribute.
+  OS << "  if (Attr *NewAttr = S.InstantiateUnknownAttr(At, TemplateArgs)) {\n"
+     << "    return NewAttr;\n"
+     << "  }\n";
+
+  OS << "  llvm_unreachable(\"Unknown attribute!\");\n"
      << "  return 0;\n"
      << "}\n\n"
      << "} // end namespace sema\n"

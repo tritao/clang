@@ -5962,6 +5962,9 @@ public:
                         LateInstantiatedAttrVec *LateAttrs = 0,
                         LocalInstantiationScope *OuterMostScope = 0);
 
+  Attr *InstantiateUnknownAttr(const Attr *At,
+                               const MultiLevelTemplateArgumentList &TemplateArgs);
+
   bool
   InstantiateClassTemplateSpecialization(SourceLocation PointOfInstantiation,
                            ClassTemplateSpecializationDecl *ClassTemplateSpec,
