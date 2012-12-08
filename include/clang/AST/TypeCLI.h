@@ -18,6 +18,14 @@
 //
 //namespace clang {
 
+enum CLITypeKind {
+  CLI_TK_None,
+#define CLI_TYPE(X) \
+    CLI_TK_##X,
+#include "clang/AST/CLITypes.def"
+#undef CLI_TYPE
+};
+
 /// CLIArrayType - This class represents the canonical version of C++/CLI
 /// arrays with a specified type and rank.
 class CLIArrayType : public RecordType {
