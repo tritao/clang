@@ -949,6 +949,7 @@ CanThrowResult Sema::canThrow(const Expr *E) {
     // C++/CLI method calls can throw.
   case Expr::CLIPropertyRefExprClass:
   case Expr::CLIValueClassInitExprClass:
+  case Expr::CLIGCNewExprClass:
     return CT_Can;
 
     // ObjC message sends are like function calls, but never have exception
@@ -1068,7 +1069,6 @@ CanThrowResult Sema::canThrow(const Expr *E) {
   case Expr::SizeOfPackExprClass:
   case Expr::StringLiteralClass:
   case Expr::UnaryTypeTraitExprClass:
-  case Expr::CLIGCNewExprClass:
     // These expressions can never throw.
     return CT_Cannot;
 

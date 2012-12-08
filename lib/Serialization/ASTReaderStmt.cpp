@@ -2137,7 +2137,7 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = new (Context) CXXDeleteExpr(Empty);
       break;
 
-    case EXPR_CXXCLI_GCNEW:
+    case EXPR_CLI_GCNEW:
       S = new (Context) CLIGCNewExpr(Empty);
       break;
 

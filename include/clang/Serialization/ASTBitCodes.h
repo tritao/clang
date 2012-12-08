@@ -1177,8 +1177,6 @@ namespace clang {
       EXPR_CXX_DELETE,            // CXXDeleteExpr
       EXPR_CXX_PSEUDO_DESTRUCTOR, // CXXPseudoDestructorExpr
       
-      EXPR_CXXCLI_GCNEW,          // CLIGCNewExpr
-
       EXPR_EXPR_WITH_CLEANUPS,    // ExprWithCleanups
       
       EXPR_CXX_DEPENDENT_SCOPE_MEMBER,   // CXXDependentScopeMemberExpr
@@ -1207,7 +1205,7 @@ namespace clang {
       // C++/CLI
       EXPR_CLI_VALUE_CLASS_INIT,  // CLIValueClassInitExpr
       EXPR_CLI_PROPERTY_REF,      // CLIPropertyRefExpr
-
+      EXPR_CLI_GCNEW,             // CLIGCNewExpr
       // CUDA
       EXPR_CUDA_KERNEL_CALL,       // CUDAKernelCallExpr      
 
