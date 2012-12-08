@@ -153,6 +153,79 @@ public:
   child_range children() { return child_range(); }
 };
 
+/// CLIPropertyRefExpr - A dot-syntax expression to access a CLI property.
+class CLIPropertyRefExpr : public Expr {
+private:
+  CLIPropertyDecl *Property;
+  DeclarationNameInfo PropertyNameInfo;
+
+  Expr *Base;
+
+  /// Indexing arguments used if property indexing.
+  SmallVector<Expr *, 2> Args;
+
+  bool IsIndexer : 1;
+
+  bool IsArrow : 1;
+
+  friend class ASTStmtReader;
+
+public:
+  /// \brief Create an expression which represents property reference/index.
+  CLIPropertyRefExpr(CLIPropertyDecl *Decl,
+                     DeclarationNameInfo NameInfo,
+                     Expr *Base,
+                     bool IsArrow,
+                     QualType Type,
+                     ExprValueKind VK,
+                     ExprObjectKind OK) :
+    Expr(CLIPropertyRefExprClass, Type, VK, OK, false, false,
+      Type->isInstantiationDependentType(), false), Property(Decl),
+      PropertyNameInfo(NameInfo), Base(Base), Args(0),
+      IsIndexer(false), IsArrow(IsArrow) {
+    assert(Type->isSpecificPlaceholderType(BuiltinType::PseudoObject));
+  }
+
+  /// \brief Create an expression which represents property reference/index.
+  CLIPropertyRefExpr(CLIPropertyDecl *Decl,
+                     Expr *Base,
+                     SmallVector<Expr *, 2> Args,
+                     QualType Type,
+                     ExprValueKind VK,
+                     ExprObjectKind OK) :
+    Expr(CLIPropertyRefExprClass, Type, VK, OK, false, false,
+      Type->isInstantiationDependentType(), false), Property(Decl),
+      Base(Base), Args(Args), IsIndexer(true), IsArrow(false) {
+    assert(Type->isSpecificPlaceholderType(BuiltinType::PseudoObject));
+  }
+
+  explicit CLIPropertyRefExpr(EmptyShell Shell)
+    : Expr(CLIPropertyRefExprClass, Shell) { }
+
+  CLIPropertyDecl *getProperty() const { return Property; }
+  DeclarationNameInfo getPropertyNameInfo() const { return PropertyNameInfo; }
+
+  Expr *getBase() const { return Base; }
+  bool isArrow() const { return IsArrow; }
+
+  const SmallVector<Expr *, 2> &getArgs() const { return Args; }
+  void setArgs(SmallVector<Expr *, 2> &Args) { Args = Args; }
+
+  bool isPropertyIndexing() const { return IsIndexer; }
+
+  SourceRange getSourceRange() const LLVM_READONLY {
+    return SourceRange();
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CLIPropertyRefExprClass;
+  }
+  static bool classof(const CLIPropertyRefExpr *) { return true; }
+
+  // Iterators
+  child_range children() { return child_range(); }
+};
+
 } // end namespace clang
 
 #endif

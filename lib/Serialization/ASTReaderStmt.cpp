@@ -1280,6 +1280,11 @@ void ASTStmtReader::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
   E->InitExpr = Reader.ReadSubExpr();
 }
 
+void ASTStmtReader::VisitCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  VisitExpr(E);
+  E->Property = ReadDeclAs<CLIPropertyDecl>(Record, Idx);
+}
+
 void ASTStmtReader::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   VisitExpr(E);
 
@@ -2138,6 +2143,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_CLI_VALUE_CLASS_INIT:
       S = new (Context) CLIValueClassInitExpr(Empty);
+      break;
+
+    case EXPR_CLI_PROPERTY_REF:
+      S = new (Context) CLIPropertyRefExpr(Empty);
       break;
 
     case EXPR_CXX_PSEUDO_DESTRUCTOR:

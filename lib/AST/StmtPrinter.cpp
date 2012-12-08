@@ -1474,6 +1474,10 @@ void StmtPrinter::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
     OS << E->getType().getAsString(Policy) << "()";
 }
 
+void StmtPrinter::VisitCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  OS << E->getProperty()->getName();
+}
+
 void StmtPrinter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   PrintExpr(E->getBase());
   if (E->isArrow())

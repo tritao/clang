@@ -1206,6 +1206,7 @@ namespace clang {
 
       // C++/CLI
       EXPR_CLI_VALUE_CLASS_INIT,  // CLIValueClassInitExpr
+      EXPR_CLI_PROPERTY_REF,      // CLIPropertyRefExpr
 
       // CUDA
       EXPR_CUDA_KERNEL_CALL,       // CUDAKernelCallExpr      

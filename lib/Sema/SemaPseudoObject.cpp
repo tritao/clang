@@ -33,6 +33,7 @@
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Initialization.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/SmallString.h"
@@ -206,8 +207,30 @@ namespace {
                                 bool captureSetValueAsResult) = 0;
   };
 
-  /// A PseudoOpBuilder for Objective-C \@properties.
-  class ObjCPropertyOpBuilder : public PseudoOpBuilder {
+ /// A PseudoOpBuilder for C++/CLI properties.
+ class CLIPropertyOpBuilder : public PseudoOpBuilder {
+  CLIPropertyRefExpr *RefExpr;
+  CLIPropertyRefExpr *SyntacticRefExpr;
+  
+ public:
+    CLIPropertyOpBuilder(Sema &S, CLIPropertyRefExpr *refExpr) :
+      PseudoOpBuilder(S, refExpr->getSourceRange().getBegin()), 
+      RefExpr(refExpr) { }
+  
+   ExprResult buildRValueOperation(Expr *op);
+   ExprResult buildAssignmentOperation(Scope *Sc,
+                                       SourceLocation opLoc,
+                                       BinaryOperatorKind opcode,
+                                       Expr *LHS, Expr *RHS);
+   Expr *rebuildAndCaptureObject(Expr *syntacticBase);
+   
+   ExprResult buildGet();
+   ExprResult buildSet(Expr *op, SourceLocation, bool);
+   ExprResult buildAccess(CXXMethodDecl *);
+ };
+
+ /// A PseudoOpBuilder for Objective-C \@properties.
+ class ObjCPropertyOpBuilder : public PseudoOpBuilder {
     ObjCPropertyRefExpr *RefExpr;
     ObjCPropertyRefExpr *SyntacticRefExpr;
     OpaqueValueExpr *InstanceReceiver;
@@ -434,6 +457,100 @@ PseudoOpBuilder::buildIncDecOperation(Scope *Sc, SourceLocation opcLoc,
   return complete(syntactic);
 }
 
+//===----------------------------------------------------------------------===//
+//  C++/CLI property references
+//===----------------------------------------------------------------------===//
+
+/// Capture the base object of an C++/CLI property expression.
+Expr *CLIPropertyOpBuilder::rebuildAndCaptureObject(Expr *syntacticBase) {
+   if (CLIPropertyRefExpr *refE
+     = dyn_cast<CLIPropertyRefExpr>(syntacticBase->IgnoreParens()))
+    SyntacticRefExpr = refE;
+
+  return syntacticBase;
+}
+
+ExprResult CLIPropertyOpBuilder::buildAccess(CXXMethodDecl *Method) {
+  CLIPropertyDecl *Property = RefExpr->getProperty();
+  assert(Property && "Expected a valid CLI property reference");
+
+  DeclAccessPair DAP = DeclAccessPair::make(Property, AS_public);
+
+  MemberExpr *ME = new (S.Context) MemberExpr(RefExpr->getBase(),
+                         RefExpr->isArrow(), Method, Method->getNameInfo(),
+                         S.Context.BoundMemberTy, RefExpr->getValueKind(),
+                         RefExpr->getObjectKind());
+
+  S.MarkMemberReferenced(ME);
+
+  return ME;
+}
+
+/// Load from an C++/CLI property reference.
+ExprResult CLIPropertyOpBuilder::buildGet() {
+  CLIPropertyDecl *Property = RefExpr->getProperty();
+  assert(Property && "Expected a valid CLI property reference");
+
+  CXXMethodDecl *Getter = Property->GetMethod;
+  assert(Getter && "Expected a valid CLI getter method");
+
+  MemberExpr *ME = buildAccess(Getter).takeAs<MemberExpr>();
+  const SmallVector<Expr *, 2> &Args = RefExpr->getArgs();
+
+  return S.BuildCallToMemberFunction(0, ME, RefExpr->getLocStart(),
+    (Expr **)Args.data(), Args.size(), RefExpr->getLocEnd());
+}
+
+/// Store to an C++/CLI property reference.
+///
+/// \param captureSetValueAsResult If true, capture the actual
+///   value being set as the value of the property operation.
+ExprResult CLIPropertyOpBuilder::buildSet(Expr *op, SourceLocation opcLoc,
+                                          bool captureSetValueAsResult) {
+  CLIPropertyDecl *Property = RefExpr->getProperty();
+  assert(Property && "Expected a valid CLI property reference");
+
+  CXXMethodDecl *Setter = Property->SetMethod;
+  assert(Setter && "Expected a valid CLI setter method");
+
+  MemberExpr *ME = buildAccess(Setter).takeAs<MemberExpr>();
+
+  return S.BuildCallToMemberFunction(0, ME, SourceLocation(), &op, 1,
+    SourceLocation());
+}
+
+/// C++/CLI property-specific behavior for doing assignments.
+ExprResult
+CLIPropertyOpBuilder::buildAssignmentOperation(Scope *Sc,
+                                               SourceLocation opcLoc,
+                                               BinaryOperatorKind opcode,
+                                               Expr *LHS, Expr *RHS) {
+  assert(BinaryOperator::isAssignmentOp(opcode));
+
+  if (!RefExpr->getProperty()->SetMethod) {
+    S.Diag(RefExpr->getProperty()->getLocation(),
+      diag::err_nosetter_property_assignment) << 1;
+    return ExprError();
+  }
+
+  ExprResult result =
+    PseudoOpBuilder::buildAssignmentOperation(Sc, opcLoc, opcode, LHS, RHS);
+  if (result.isInvalid()) return ExprError();
+  return result;
+}
+
+/// C++/CLI property-specific behavior for doing lvalue-to-rvalue conversion.
+ExprResult CLIPropertyOpBuilder::buildRValueOperation(Expr *op) {
+  if (!RefExpr->getProperty()->GetMethod) {
+    S.Diag(RefExpr->getProperty()->getLocation(),
+      diag::err_getter_not_found) << RefExpr->getBase()->getType();
+    return ExprError();
+  }
+
+  ExprResult result = PseudoOpBuilder::buildRValueOperation(op);
+  if (result.isInvalid()) return ExprError();
+  return result;
+}
 
 //===----------------------------------------------------------------------===//
 //  Objective-C @property and implicit property references
@@ -1333,6 +1450,11 @@ ExprResult Sema::checkPseudoObjectRValue(Expr *E) {
            = dyn_cast<ObjCSubscriptRefExpr>(opaqueRef)) {
     ObjCSubscriptOpBuilder builder(*this, refExpr);
     return builder.buildRValueOperation(E);
+  }
+  else if (CLIPropertyRefExpr *refExpr
+           = dyn_cast<CLIPropertyRefExpr>(opaqueRef)) {
+    CLIPropertyOpBuilder builder(*this, refExpr);
+    return builder.buildRValueOperation(E);
   } else {
     llvm_unreachable("unknown pseudo-object kind!");
   }
@@ -1383,6 +1505,10 @@ ExprResult Sema::checkPseudoObjectAssignment(Scope *S, SourceLocation opcLoc,
   } else if (ObjCSubscriptRefExpr *refExpr
              = dyn_cast<ObjCSubscriptRefExpr>(opaqueRef)) {
     ObjCSubscriptOpBuilder builder(*this, refExpr);
+    return builder.buildAssignmentOperation(S, opcLoc, opcode, LHS, RHS);
+  } else if (CLIPropertyRefExpr *refExpr
+             = dyn_cast<CLIPropertyRefExpr>(opaqueRef)) {
+    CLIPropertyOpBuilder builder(*this, refExpr);
     return builder.buildAssignmentOperation(S, opcLoc, opcode, LHS, RHS);
   } else {
     llvm_unreachable("unknown pseudo-object kind!");

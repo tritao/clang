@@ -1274,6 +1274,12 @@ void ASTStmtWriter::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
   Code = serialization::EXPR_CLI_VALUE_CLASS_INIT;
 }
 
+void ASTStmtWriter::VisitCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  VisitExpr(E);
+  Writer.AddDeclRef(E->getProperty(), Record);
+  Code = serialization::EXPR_CLI_PROPERTY_REF;
+}
+
 void ASTStmtWriter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   VisitExpr(E);
 

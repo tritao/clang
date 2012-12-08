@@ -946,6 +946,11 @@ CanThrowResult Sema::canThrow(const Expr *E) {
     return mergeCanThrow(CT, canSubExprsThrow(*this, E));
   }
 
+    // C++/CLI method calls can throw.
+  case Expr::CLIPropertyRefExprClass:
+  case Expr::CLIValueClassInitExprClass:
+    return CT_Can;
+
     // ObjC message sends are like function calls, but never have exception
     // specs.
   case Expr::ObjCMessageExprClass:

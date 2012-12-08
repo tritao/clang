@@ -8846,6 +8846,24 @@ TreeTransform<Derived>::TransformObjCIsaExpr(ObjCIsaExpr *E) {
 
 template<typename Derived>
 ExprResult
+TreeTransform<Derived>::TransformCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  // Transform the base expression.
+  CLIPropertyDecl *Property = cast_or_null<CLIPropertyDecl>(
+    getDerived().TransformDecl(SourceLocation(), E->getProperty()));
+
+  // If nothing changed, just retain the existing expression.
+  if (!getDerived().AlwaysRebuild() && Property == E->getProperty())
+    return SemaRef.Owned(E);
+
+  return SemaRef.Owned(E);
+  //return getDerived().RebuildCLIPropertyRefExpr(Base.get(),
+  //                                               SemaRef.Context.PseudoObjectTy,
+  //                                               E->CLIPropertyDecl(),
+  //                                               E->getLocation());
+}
+
+template<typename Derived>
+ExprResult
 TreeTransform<Derived>::TransformShuffleVectorExpr(ShuffleVectorExpr *E) {
   bool ArgumentChanged = false;
   SmallVector<Expr*, 8> SubExprs;

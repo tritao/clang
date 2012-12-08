@@ -2242,6 +2242,8 @@ DEF_TRAVERSE_STMT(UnresolvedMemberExpr, {
   }
 })
 
+DEF_TRAVERSE_STMT(CLIPropertyRefExpr, { })
+
 DEF_TRAVERSE_STMT(SEHTryStmt, {})
 DEF_TRAVERSE_STMT(SEHLeaveStmt, {})
 DEF_TRAVERSE_STMT(SEHExceptStmt, {})

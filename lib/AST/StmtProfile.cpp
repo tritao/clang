@@ -860,6 +860,11 @@ void StmtProfiler::VisitCLIValueClassInitExpr(const CLIValueClassInitExpr *S) {
   ID.AddInteger(S->getInitKind());
 }
 
+void StmtProfiler::VisitCLIPropertyRefExpr(const CLIPropertyRefExpr *S) {
+  VisitExpr(S);
+  VisitDecl(S->getProperty());
+}
+
 void
 StmtProfiler::VisitCXXPseudoDestructorExpr(const CXXPseudoDestructorExpr *S) {
   VisitExpr(S);
