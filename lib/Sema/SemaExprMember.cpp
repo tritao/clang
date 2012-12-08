@@ -15,9 +15,11 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/Lex/Preprocessor.h"
 
@@ -1110,6 +1112,19 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     if (LookupMemberExprInRecord(*this, R, BaseExpr.get()->getSourceRange(),
                                  RTy, OpLoc, SS, HasTemplateArgs))
       return ExprError();
+
+    // Handle CLI properties access
+    if (RTy->isCLIRecordType() && R.isSingleResult()) {
+      if (CLIPropertyDecl *PD = dyn_cast<CLIPropertyDecl>(R.getFoundDecl())) {
+        return Owned(new (Context) CLIPropertyRefExpr(PD,
+                                                      R.getLookupNameInfo(),
+                                                      BaseExpr.get(),
+                                                      IsArrow,
+                                                      Context.PseudoObjectTy,
+                                                      VK_LValue,
+                                                      OK_CLIProperty));
+      }
+    }
 
     // Returning valid-but-null is how we indicate to the caller that
     // the lookup result was filled in.

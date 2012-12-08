@@ -139,6 +139,10 @@ namespace clang {
     /// A vector component is an element or range of elements on a vector.
     OK_VectorComponent,
 
+    /// A C++/CLI property is a logical field of a C++/CLI class object
+    // which is read and written via method calls.
+    OK_CLIProperty,
+
     /// An Objective-C property is a logical field of an Objective-C
     /// object which is read and written via Objective-C method calls.
     OK_ObjCProperty,

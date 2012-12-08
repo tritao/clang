@@ -21,6 +21,40 @@
 
 namespace clang {
 
+enum CLIPropertyKind {
+  CLI_PK_Auto,
+  CLI_PK_Getter,
+  CLI_PK_Setter,
+};
+
+/// CLIPropertyDecl - Represent a C++/CLI property.
+class CLIPropertyDecl : public ValueDecl {
+  virtual void anchor() LLVM_OVERRIDE;
+
+  CLIPropertyDecl(DeclContext *DC, DeclarationName DN, QualType Ty);
+
+public:
+
+  CXXMethodDecl *GetMethod; // Declaration of getter instance method
+  CXXMethodDecl *SetMethod; // Declaration of setter instance method
+  FieldDecl* Field;
+  SmallVector<QualType, 2> IndexerTypes;
+
+  bool isIndexer() const { return !IndexerTypes.empty(); }
+
+  static CLIPropertyDecl *Create(ASTContext &C, DeclContext *DC,
+    DeclarationName DN, QualType Ty);
+
+  static CLIPropertyDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+
+  // Implement isa/cast/dyncast/etc.
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classof(const CLIPropertyDecl *D) { return true; }
+  static bool classofKind(Kind K) { return K == CLIProperty; }
+
+  friend class ASTDeclReader;
+  friend class ASTDeclWriter;
+};
 
 } // end namespace clang
 

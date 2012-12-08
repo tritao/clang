@@ -17,3 +17,21 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 using namespace clang;
+
+void CLIPropertyDecl::anchor() { }
+
+CLIPropertyDecl::CLIPropertyDecl(DeclContext *DC, DeclarationName DN,
+                                 QualType Ty)
+  : ValueDecl(CLIProperty, DC, SourceLocation(), DN, Ty),
+    GetMethod(0), SetMethod(0), Field(0) {
+}
+
+CLIPropertyDecl *CLIPropertyDecl::Create(ASTContext &C, DeclContext *DC,
+                                         DeclarationName DN, QualType Ty) {
+  return new (C) CLIPropertyDecl(DC, DN, Ty);
+}
+
+CLIPropertyDecl *CLIPropertyDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
+  void *Mem = AllocateDeserializedDecl(C, ID, sizeof(CLIPropertyDecl));
+  return new (Mem) CLIPropertyDecl(0, DeclarationName(), QualType());
+}

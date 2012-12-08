@@ -46,6 +46,7 @@ class CompoundStmt;
 class StoredDeclsMap;
 class DependentDiagnostic;
 class ASTMutationListener;
+class CLIPropertyDecl;
 }
 
 namespace llvm {

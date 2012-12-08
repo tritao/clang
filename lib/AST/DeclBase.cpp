@@ -15,6 +15,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclContextInternals.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
@@ -504,6 +505,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case Field:
     case ObjCAtDefsField:
     case ObjCIvar:
+    case CLIProperty:
       return IDNS_Member;
 
     case Record:

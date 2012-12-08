@@ -1542,6 +1542,7 @@ static TryCastResult TryReinterpretCast(Sema &Self, ExprResult &SrcExpr,
       break;
     case OK_BitField:        inappropriate = "bit-field";           break;
     case OK_VectorComponent: inappropriate = "vector element";      break;
+    case OK_CLIProperty:     inappropriate = "property expression"; break;
     case OK_ObjCProperty:    inappropriate = "property expression"; break;
     case OK_ObjCSubscript:   inappropriate = "container subscripting expression"; 
                              break;

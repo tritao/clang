@@ -115,6 +115,7 @@ namespace  {
       case OK_ObjCProperty: OS << " objcproperty"; break;
       case OK_ObjCSubscript: OS << " objcsubscript"; break;
       case OK_VectorComponent: OS << " vectorcomponent"; break;
+      case OK_CLIProperty: OS << " cliproperty"; break;
       }
     }
     void DumpExpr(const Expr *Node) {
