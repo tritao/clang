@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Frontend/CodeGenOptions.h"
+#include "clang/AST/DeclCLI.h"
 #include "CodeGenFunction.h"
 #include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
@@ -1311,6 +1312,83 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
   }
   
   return result;
+}
+
+llvm::Value *CodeGenFunction::EmitCLIGCNewExpr(const CLIGCNewExpr *E) {
+  // The element type being allocated.
+  QualType allocType = getContext().getBaseElementType(E->getAllocatedType());
+  assert(allocType->isRecordType() || isa<CLIArrayType>(allocType));
+  
+  llvm::Type *DstTy = ConvertType(E->getType());
+
+  if (const CLIArrayType *AT = allocType->getAs<CLIArrayType>()) {
+    const Expr *InitE = E->getInitializer();
+    const InitListExpr *Init = cast<InitListExpr>(InitE);
+    assert(Init && "Expected a valid initializer list");
+
+    const CLIArrayType *Array = dyn_cast<CLIArrayType>(allocType);
+    QualType ElemType = Array->getElementType();
+
+    auto ElemTy = cast<llvm::PointerType>(ConvertTypeForMem(ElemType));
+    auto ElemPtr = llvm::ConstantPointerNull::get(ElemTy);
+    auto ElemIntrVal = Builder.CreateBitCast(ElemPtr, llvm::PointerType::
+      getInt8PtrTy(getLLVMContext()));
+
+    SmallVector<llvm::Value *, 8> CallArgs;
+    CallArgs.push_back(ElemIntrVal);
+
+    for (unsigned i = 0; i < Init->getNumInits(); ++i) {
+      const Expr *E = Init->getInit(i);
+      llvm::Value *Expr = EmitAnyExpr(E).getScalarVal();
+      CallArgs.push_back(Expr);
+    }
+
+    llvm::Instruction* CallInst = Builder.CreateCall(CGM.getIntrinsic(
+      llvm::Intrinsic::cil_newarr), CallArgs);
+
+    CXXRecordDecl *ElemRD = ElemType->getPointeeType()->getAsCXXRecordDecl();
+    llvm::MDString *Str = llvm::MDString::get(getLLVMContext(),
+      CGM.getCLIRecordIRName(ElemRD));
+
+    CallInst->setMetadata("cil.type", llvm::MDNode::get(getLLVMContext(),
+      Str));
+
+    return Builder.CreateBitCast(CallInst, DstTy);
+  } else if (CXXRecordDecl *RD = allocType->getAsCXXRecordDecl()) {
+    CLIDefinitionData *Data = RD->getCLIData();
+    assert(Data && "Expected a valid C++/CLI record type");
+
+    const Expr *Init = E->getInitializer();
+
+    //RValue RV = EmitAnyExpr(Init);
+    //return Builder.CreateBitCast(RV.getAggregateAddr(), DstTy);
+
+    const CXXConstructExpr *CCE = dyn_cast_or_null<CXXConstructExpr>(Init);
+    assert(CCE && "Expected a valid C++/CLI constructor expr");
+
+    CXXConstructorDecl *CD = CCE->getConstructor();
+    assert(CD && "Expected a valid C++/CLI constructor decl");
+
+    const FunctionProtoType *FPT = CD->getType()->castAs<FunctionProtoType>();
+
+    // And the rest of the call args.
+    CallArgList Args;
+    EmitCallArgs(Args, FPT, CCE->arg_begin(), CCE->arg_end());
+  
+    CXXCtorType CtorType = Ctor_Base;
+    const CGFunctionInfo &CGInfo = CGM.getTypes().arrangeCXXConstructorDeclaration(
+      CD, CtorType);
+    llvm::Value *Callee = CGM.GetAddrOfCXXConstructor(CD, CtorType);
+
+    EmitCall(CGInfo, Callee, ReturnValueSlot(), Args, CD);
+
+    llvm::Value* CallInst = Builder.CreateCall(CGM.getIntrinsic(
+      llvm::Intrinsic::cil_newobj));
+
+    return Builder.CreateBitCast(CallInst, DstTy);
+  } else {
+    llvm_unreachable("Unexpected gcnew expression type");
+  }
 }
 
 void CodeGenFunction::EmitDeleteCall(const FunctionDecl *DeleteFD,
