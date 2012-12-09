@@ -2140,7 +2140,7 @@ private:
                                UnqualifiedId &TemplateName,
                                bool AllowTypeAnnotation = true);
   void AnnotateTemplateIdTokenAsType();
-  bool IsTemplateArgumentList(unsigned Skip = 0);
+  bool IsTemplateArgumentList(unsigned Skip = 0, unsigned *NumArgs = 0);
   bool ParseTemplateArgumentList(TemplateArgList &TemplateArgs);
   ParsedTemplateArgument ParseTemplateTemplateArgument();
   ParsedTemplateArgument ParseTemplateArgument();

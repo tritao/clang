@@ -1243,12 +1243,15 @@ public:
   enum { MaxFunctionScopeDepth = 255 };
   enum { MaxFunctionScopeIndex = 255 };
 
+  unsigned char TemplateParamIndex;
+
 protected:
   ParmVarDecl(Kind DK, DeclContext *DC, SourceLocation StartLoc,
               SourceLocation IdLoc, IdentifierInfo *Id,
               QualType T, TypeSourceInfo *TInfo,
               StorageClass S, StorageClass SCAsWritten, Expr *DefArg)
-    : VarDecl(DK, DC, StartLoc, IdLoc, Id, T, TInfo, S, SCAsWritten) {
+    : VarDecl(DK, DC, StartLoc, IdLoc, Id, T, TInfo, S, SCAsWritten),
+      TemplateParamIndex(0) {
     assert(ParmVarDeclBits.HasInheritedDefaultArg == false);
     assert(ParmVarDeclBits.IsKNRPromoted == false);
     assert(ParmVarDeclBits.IsObjCMethodParam == false);
@@ -1294,6 +1297,16 @@ public:
   /// Returns the index of this parameter in its prototype or method scope.
   unsigned getFunctionScopeIndex() const {
     return getParameterIndex();
+  }
+
+  /// Returns the index of this parameter in its template specialization.
+  unsigned getTemplateParamIndex() const {
+    return TemplateParamIndex;
+  }
+
+  /// Sets the index of this parameter in its template specialization.
+  void setTemplateParamIndex(unsigned char Index) {
+    TemplateParamIndex = Index;
   }
 
   ObjCDeclQualifier getObjCDeclQualifier() const {

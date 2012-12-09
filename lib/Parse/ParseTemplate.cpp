@@ -1133,7 +1133,7 @@ ParsedTemplateArgument Parser::ParseTemplateArgument() {
 /// \brief Determine whether the current tokens can only be parsed as a 
 /// template argument list (starting with the '<') and never as a '<' 
 /// expression.
-bool Parser::IsTemplateArgumentList(unsigned Skip) {
+bool Parser::IsTemplateArgumentList(unsigned Skip, unsigned *NumArgs) {
   struct AlwaysRevertAction : TentativeParsingAction {
     AlwaysRevertAction(Parser &P) : TentativeParsingAction(P) { }
     ~AlwaysRevertAction() { Revert(); }
@@ -1154,8 +1154,12 @@ bool Parser::IsTemplateArgumentList(unsigned Skip) {
     return true;
   
   // See whether we have declaration specifiers, which indicate a type.
-  while (isCXXDeclarationSpecifier() == TPResult::True())
+  while (isCXXDeclarationSpecifier() == TPResult::True()) {
     ConsumeToken();
+    // We need to know the number of template arguments for C++/CLI
+    if (NumArgs)
+      (*NumArgs)++;
+  }
   
   // If we have a '>' or a ',' then this is a template argument list.
   return Tok.is(tok::greater) || Tok.is(tok::comma);

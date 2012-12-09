@@ -31,7 +31,9 @@ enum TemplateNameKind {
   /// template name is assumed to refer to a type template or a
   /// function template depends on the context in which the template
   /// name occurs.
-  TNK_Dependent_template_name
+  TNK_Dependent_template_name,
+  /// The name does refers to a CLI generic.
+  TNK_CLI_Generic,
 };
 
 }

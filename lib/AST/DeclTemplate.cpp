@@ -704,6 +704,7 @@ ClassTemplateSpecializationDecl(ASTContext &Context, Kind DK, TagKind TK,
     ExplicitInfo(0),
     TemplateArgs(TemplateArgumentList::CreateCopy(Context, Args, NumArgs)),
     SpecializationKind(TSK_Undeclared) {
+  setCLIData(SpecializedTemplate->getTemplatedDecl()->getCLIData());
 }
 
 ClassTemplateSpecializationDecl::ClassTemplateSpecializationDecl(Kind DK)

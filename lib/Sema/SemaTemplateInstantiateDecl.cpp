@@ -1517,6 +1517,15 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
                                    D->isConstexpr(), D->getLocEnd());
   }
 
+  if (SemaRef.getLangOpts().CPlusPlusCLI && D->isCLIMethod()) {
+    Method->setCLIData(D->getCLIData());
+    QualType Ret = D->getResultType();
+    if (const TemplateTypeParmType *TTy = Ret->getAs<TemplateTypeParmType>()) {
+      unsigned Index = TTy->getIndex() + 1;
+      Method->getCLIData()->setReturnTemplateParamIndex(Index);
+    }
+  }
+
   if (QualifierLoc)
     Method->setQualifierInfo(QualifierLoc);
 

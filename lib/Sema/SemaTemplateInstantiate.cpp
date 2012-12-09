@@ -1708,6 +1708,12 @@ ParmVarDecl *Sema::SubstParmVarDecl(ParmVarDecl *OldParm,
     // Introduce an Old -> New mapping
     CurrentInstantiationScope->InstantiatedLocal(OldParm, NewParm);  
   }
+
+  if (const TemplateTypeParmType *TTy
+    = OldDI->getType()->getAs<TemplateTypeParmType>()) {
+    unsigned Index = TTy->getIndex() + 1;
+    NewParm->setTemplateParamIndex((unsigned char)Index);
+  }
   
   // FIXME: OldParm may come from a FunctionProtoType, in which case CurContext
   // can be anything, is this right ?
