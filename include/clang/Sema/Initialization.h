@@ -221,12 +221,12 @@ public:
     return InitializedEntity(EK_Exception, ThrowLoc, Type, NRVO);
   }
 
-  /// \brief Create the initialization entity for an object allocated via new.
+  /// \brief Create the initialization entity for an object allocated via gcnew.
   static InitializedEntity InitializeGCNew(SourceLocation NewLoc, QualType Type) {
     return InitializedEntity(EK_GCNew, NewLoc, Type);
   }
 
-  /// \brief Create the initialization entity for an object allocated via gcnew.
+  /// \brief Create the initialization entity for an object allocated via new.
   static InitializedEntity InitializeNew(SourceLocation NewLoc, QualType Type) {
     return InitializedEntity(EK_New, NewLoc, Type);
   }
