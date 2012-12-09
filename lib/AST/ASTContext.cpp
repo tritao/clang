@@ -3660,6 +3660,16 @@ bool ASTContext::UnwrapSimilarPointerTypes(QualType &T1, QualType &T2) {
       return true;
     }
   }
+
+  if (getLangOpts().CPlusPlusCLI) {
+    const HandleType *T1HType = T1->getAs<HandleType>(),
+                     *T2HType = T2->getAs<HandleType>();
+    if (T1HType && T2HType) {
+      T1 = T1HType->getPointeeType();
+      T2 = T2HType->getPointeeType();
+      return true;
+    }
+  }
   
   // FIXME: Block pointers, too?
   

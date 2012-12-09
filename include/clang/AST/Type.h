@@ -1612,6 +1612,7 @@ public:
     STK_CPointer,
     STK_BlockPointer,
     STK_ObjCObjectPointer,
+    STK_CLIHandle,
     STK_MemberPointer,
     STK_Bool,
     STK_Integral,
@@ -4888,7 +4889,7 @@ inline bool Type::isPointerType() const {
   return isa<PointerType>(CanonicalType);
 }
 inline bool Type::isAnyPointerType() const {
-  return isPointerType() || isObjCObjectPointerType();
+  return isPointerType() || isObjCObjectPointerType() || isHandleType();
 }
 inline bool Type::isBlockPointerType() const {
   return isa<BlockPointerType>(CanonicalType);
@@ -5088,6 +5089,7 @@ inline bool Type::isScalarType() const {
          isa<BlockPointerType>(CanonicalType) ||
          isa<MemberPointerType>(CanonicalType) ||
          isa<ComplexType>(CanonicalType) ||
+         isa<HandleType>(CanonicalType) ||
          isa<ObjCObjectPointerType>(CanonicalType);
 }
 
@@ -5122,6 +5124,7 @@ inline bool Type::canDecayToPointerType() const {
 }
 
 inline bool Type::hasPointerRepresentation() const {
+  if (isHandleType()) return true;
   return (isPointerType() || isReferenceType() || isBlockPointerType() ||
           isObjCObjectPointerType() || isNullPtrType());
 }

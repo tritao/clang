@@ -19,6 +19,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/RecordLayout.h"
 #include "llvm/DerivedTypes.h"
@@ -401,6 +403,22 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     break;
   }
 
+  case Type::Handle: {
+    const HandleType *HTy = cast<HandleType>(Ty);
+    QualType ETy = HTy->getPointeeType();
+    llvm::Type *PointeeType = ConvertTypeForMem(ETy);
+    llvm::PointerType *PTy = llvm::PointerType::getUnqual(PointeeType);
+    PTy->setAsManagedHandle();
+    ResultType = PTy;
+    break;
+  }
+
+  case Type::TrackingReference: {
+    llvm_unreachable("Can't handle C++/CLI tracking references yet");
+    return 0;
+    break;
+  }
+
   case Type::VariableArray: {
     const VariableArrayType *A = cast<VariableArrayType>(Ty);
     assert(A->getIndexTypeCVRQualifiers() == 0 &&
@@ -566,12 +584,6 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     break;
   }
 
-  case Type::Handle: {
-  case Type::TrackingReference:
-    //assert("Can't handle C++ extension types yet");
-    return 0;
-    break;
-  }
   }
   
   assert(ResultType && "Didn't convert a type?");

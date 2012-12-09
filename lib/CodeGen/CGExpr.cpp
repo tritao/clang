@@ -1152,6 +1152,9 @@ RValue CodeGenFunction::EmitLoadOfLValue(LValue LV) {
   if (LV.isExtVectorElt())
     return EmitLoadOfExtVectorElementLValue(LV);
 
+  if (LV.isCLIHandle())
+    return RValue::get(LV.getHandle());
+
   assert(LV.isBitField() && "Unknown LValue type!");
   return EmitLoadOfBitfieldLValue(LV);
 }

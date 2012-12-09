@@ -1192,6 +1192,22 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
                                      Info, Deduced, SubTDF);
     }
 
+    //     T ^
+    case Type::Handle: {
+      QualType PointeeType;
+      if (const HandleType *HandleArg = Arg->getAs<HandleType>()) {
+        PointeeType = HandleArg->getPointeeType();
+      } else {
+        return Sema::TDK_NonDeducedMismatch;
+      }
+
+      unsigned SubTDF = TDF & (TDF_IgnoreQualifiers | TDF_DerivedClass);
+      return DeduceTemplateArgumentsByTypeMatch(S, TemplateParams,
+                                     cast<HandleType>(Param)->getPointeeType(),
+                                     PointeeType,
+                                     Info, Deduced, SubTDF);
+    }
+
     //     T &
     case Type::LValueReference: {
       const LValueReferenceType *ReferenceArg = Arg->getAs<LValueReferenceType>();
@@ -2971,7 +2987,7 @@ static bool AdjustFunctionParmAndArgTypesForDeduction(Sema &S,
   //       type that can be converted to the deduced A via a qualification
   //       conversion (4.4).
   if (ArgType->isPointerType() || ArgType->isMemberPointerType() ||
-      ArgType->isObjCObjectPointerType())
+      ArgType->isObjCObjectPointerType() || ArgType->isHandleType())
     TDF |= TDF_IgnoreQualifiers;
   //     - If P is a class and P has the form simple-template-id, then the
   //       transformed A can be a derived class of the deduced A. Likewise,

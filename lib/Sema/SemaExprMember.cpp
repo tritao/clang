@@ -821,8 +821,12 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                ActOnMemberAccessExtraArgs *ExtraArgs) {
   QualType BaseType = BaseExprType;
   if (IsArrow) {
-    assert(BaseType->isPointerType());
-    BaseType = BaseType->castAs<PointerType>()->getPointeeType();
+    if (BaseType->isHandleType()) {
+      BaseType = BaseType->castAs<HandleType>()->getPointeeType();
+    } else {
+      assert(BaseType->isPointerType());
+      BaseType = BaseType->castAs<PointerType>()->getPointeeType();
+    }
   }
   R.setBaseObjectType(BaseType);
 
@@ -1091,6 +1095,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
       BaseType = Ptr->getPointeeType();
     else if (const ObjCObjectPointerType *Ptr
                = BaseType->getAs<ObjCObjectPointerType>())
+      BaseType = Ptr->getPointeeType();
+    else if (const HandleType*Ptr = BaseType->getAs<HandleType>())
       BaseType = Ptr->getPointeeType();
     else if (BaseType->isRecordType()) {
       // Recover from arrow accesses to records, e.g.:
@@ -1637,7 +1643,7 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     VK = VK_LValue;
   } else {
     QualType BaseType = BaseExpr->getType();
-    if (IsArrow) BaseType = BaseType->getAs<PointerType>()->getPointeeType();
+    if (IsArrow) BaseType = BaseType->getPointeeType();
     
     Qualifiers BaseQuals = BaseType.getQualifiers();
     

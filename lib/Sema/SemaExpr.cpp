@@ -2099,6 +2099,8 @@ Sema::PerformObjectMemberConversion(Expr *From,
     if (FromType->getAs<PointerType>()) {
       FromRecordType = FromType->getPointeeType();
       PointerConversions = true;
+    } if (FromType->getAs<HandleType>()) {
+      FromRecordType = FromType->getPointeeType();
     } else {
       FromRecordType = FromType;
       DestType = DestRecordType;
@@ -3286,6 +3288,22 @@ Sema::ActOnArraySubscriptExpr(Scope *S, Expr *Base, SourceLocation LLoc,
                                                   Context.DependentTy,
                                                   VK_LValue, OK_Ordinary,
                                                   RLoc));
+  }
+
+  QualType LHSTy = LHSExp->getType();
+  QualType RHSTy = RHSExp->getType();
+
+  if (getLangOpts().CPlusPlusCLI &&
+      (LHSTy->isHandleType() || RHSTy->isHandleType())) {
+    const HandleType *LHSHandle = LHSTy->getAs<HandleType>();
+    const HandleType *RHSHandle = RHSTy->getAs<HandleType>();
+    
+    CXXRecordDecl *RD = 0;
+    if (LHSHandle)
+      RD = LHSHandle->getPointeeType()->getAsCXXRecordDecl();
+    else if (RHSHandle)
+      RD = RHSHandle->getPointeeType()->getAsCXXRecordDecl();
+
   }
 
   if (getLangOpts().CPlusPlus &&

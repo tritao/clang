@@ -20,7 +20,7 @@
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/TemplateDeduction.h"
-#include "clang/Sema/SemaCXXCLI.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/CXXInheritance.h"
@@ -5218,6 +5218,9 @@ Sema::ActOnStartCXXMemberReference(Scope *S, Expr *Base, SourceLocation OpLoc,
     }
 
     if (BaseType->isPointerType() || BaseType->isObjCObjectPointerType())
+      BaseType = BaseType->getPointeeType();
+
+    if (BaseType->isHandleType())
       BaseType = BaseType->getPointeeType();
   }
 

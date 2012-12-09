@@ -398,8 +398,6 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
 
   case Type::LValueReference:
   case Type::RValueReference:
-  case Type::Handle:
-  case Type::TrackingReference:
     llvm_unreachable("References shouldn't get here");
 
   case Type::Builtin:
@@ -474,6 +472,8 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     VTableName = "_ZTVN10__cxxabiv119__pointer_type_infoE";
     break;
 
+  case Type::Handle:
+  case Type::TrackingReference:
   case Type::CLIArray:
     llvm_unreachable("Managed types shouldn't get here");
 
@@ -667,6 +667,8 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
     // No fields, at least for the moment.
     break;
 
+  case Type::Handle:
+  case Type::TrackingReference:
   case Type::CLIArray:
     // No type information provided for C++/CLI types.
     break;

@@ -85,6 +85,8 @@ bool CodeGenFunction::hasAggregateLLVMType(QualType type) {
   case Type::FunctionNoProto:
   case Type::Enum:
   case Type::ObjCObjectPointer:
+  case Type::Handle:
+  case Type::TrackingReference:
   case Type::CLIArray:
     return false;
 
@@ -1086,6 +1088,14 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 
     case Type::MemberPointer:
       type = cast<MemberPointerType>(ty)->getPointeeType();
+      break;
+
+    case Type::Handle:
+      type = cast<HandleType>(ty)->getPointeeType();
+      break;
+
+    case Type::TrackingReference:
+      type = cast<TrackingReferenceType>(ty)->getPointeeType();
       break;
 
     case Type::ConstantArray:
