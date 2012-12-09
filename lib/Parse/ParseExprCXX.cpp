@@ -406,7 +406,43 @@ bool Parser::ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS,
                                     TemplateName, false))
           return true;
         continue;
-      } 
+      } else if (getLangOpts().CPlusPlusCLI) {
+        // This could be a C++/CLI generic. Since generic names are mangled with
+        // the arity of the template parameters, we need to check the arguments
+        // first, and try to resolve the "template" name again.
+        TemplateArgList Args;
+
+        {
+          struct AlwaysRevertAction : TentativeParsingAction {
+            AlwaysRevertAction(Parser &P) : TentativeParsingAction(P) { }
+            ~AlwaysRevertAction() { Revert(); }
+          } Tentative(*this);
+
+          ConsumeToken();
+          ConsumeToken();
+          if (ParseTemplateArgumentList(Args))
+            return true;
+        }
+
+        std::string GenericName = II.getName().str() + "`" +
+          std::to_string(Args.size());
+        TemplateName.setIdentifier(PP.getIdentifierInfo(GenericName),
+          Tok.getLocation());
+
+        if (TemplateNameKind TNK = Actions.isTemplateName(getCurScope(), SS, 
+                                                /*hasTemplateKeyword=*/false,
+                                                          TemplateName,
+                                                          ObjectType,
+                                                          EnteringContext,
+                                                          Template,
+                                                MemberOfUnknownSpecialization)) {
+          ConsumeToken();
+          if (AnnotateTemplateIdToken(Template, TNK, SS, SourceLocation(),
+                                      TemplateName, false))
+            return true;
+          continue;
+        }
+      }
       
       if (MemberOfUnknownSpecialization && (ObjectType || SS.isSet()) && 
           (IsTypename || IsTemplateArgumentList(1))) {
