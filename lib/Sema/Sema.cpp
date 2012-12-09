@@ -27,6 +27,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/SemaConsumer.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/DeclCXX.h"
@@ -103,7 +104,7 @@ void SemaPPCallbacks::UsingDirective(SourceLocation HashLoc,
   SourceManager &SourceMgr = S.getSourceManager();
 
   SrcMgr::CharacteristicKind FileCharacter =
-      SourceMgr.getFileCharacteristic(FilenameRange.getBegin());
+    SourceMgr.getFileCharacteristic(FilenameRange.getBegin());
 
   // Look up the file, create a File ID for it.
   SourceLocation IncludePos = FilenameRange.getEnd();
@@ -139,6 +140,7 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
     AccessCheckingSFINAE(false), InNonInstantiationSFINAEContext(false),
     NonInstantiationEntries(0), ArgumentPackSubstitutionIndex(-1),
     CurrentInstantiationScope(0), TyposCorrected(0),
+    CLIContext(0),
     AnalysisWarnings(*this)
 {
   TUScope = 0;
@@ -224,6 +226,8 @@ void Sema::Initialize() {
     SemaPPCallbacks *SemaPP = new SemaPPCallbacks(*this);
     getPreprocessor().addPPCallbacks(SemaPP);
 
+    assert(!CLIContext && "CLI context should not be initialized");
+    CLIContext = new CLISemaContext();
 
     // FIXME: Load mscorlib by default
   }
@@ -248,6 +252,10 @@ Sema::~Sema() {
   if (ExternalSemaSource *ExternalSema
         = dyn_cast_or_null<ExternalSemaSource>(Context.getExternalSource()))
     ExternalSema->ForgetSema();
+
+  if (getLangOpts().CPlusPlusCLI) {
+    delete CLIContext;
+  }
 }
 
 /// makeUnavailableInSystemHeader - There is an error in the current

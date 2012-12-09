@@ -24,6 +24,7 @@
 #include "clang/Sema/LocInfoType.h"
 #include "clang/Sema/TypoCorrection.h"
 #include "clang/Sema/Weak.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/DeclarationName.h"
@@ -179,6 +180,8 @@ namespace sema {
   class PossiblyUnreachableDiag;
   class TemplateDeductionInfo;
 }
+
+class CLISemaContext;
 
 // FIXME: No way to easily map from TemplateTypeParmTypes to
 // TemplateTypeParmDecls, so we have this horrible PointerUnion.
@@ -1708,7 +1711,6 @@ public:
   bool IsNoReturnConversion(QualType FromType, QualType ToType,
                             QualType &ResultTy);
   bool DiagnoseMultipleUserDefinedConversion(Expr *From, QualType ToType);
-
 
   ExprResult PerformMoveOrCopyInitialization(const InitializedEntity &Entity,
                                              const VarDecl *NRVOCandidate,
@@ -7304,6 +7306,20 @@ public:
       DC = CatD->getClassInterface();
     return DC;
   }
+
+  //===--------------------------------------------------------------------===//
+  // C++/CLI Semantic Analysis / Assembly Processing: SemaCLI.cpp.
+
+  typedef llvm::SmallSet<FileID, 16> ManagedAssemblies;
+
+  CLISemaContext *CLIContext;
+
+  CLISemaContext * getCLIContext() { return CLIContext; }
+  CLISemaContext * getCLIContext() const { return CLIContext; }
+
+  // \brief Loads managed assemblies 
+  void LoadManagedAssembly(FileID FID);
+
 };
 
 /// \brief RAII object that enters a new expression evaluation context.
