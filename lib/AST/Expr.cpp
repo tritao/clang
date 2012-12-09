@@ -2845,6 +2845,10 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case ObjCBridgedCastExprClass:
     // FIXME: Classify these cases better.
     return true;
+
+  case CLIPropertyRefExprClass:
+    // FIXME: Classify these cases better.
+    return true;
   }
 
   // Recurse to children.

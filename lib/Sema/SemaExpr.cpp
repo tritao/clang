@@ -3272,6 +3272,169 @@ static bool checkArithmeticOnObjCPointer(Sema &S,
   return true;
 }
 
+static void GatherCommaExpressions(SmallVector<Expr *, 2> &Exprs,
+                                   Expr *Idx) {
+  BinaryOperator *BO = dyn_cast<BinaryOperator>(Idx);
+  
+  if (!BO || BO->getOpcode() != BO_Comma) {
+    Exprs.push_back(Idx);
+    return;
+  }
+
+  GatherCommaExpressions(Exprs, BO->getLHS());
+  GatherCommaExpressions(Exprs, BO->getRHS());
+}
+
+class CLIArrayConvertDiagnoser : public Sema::ICEConvertDiagnoser {
+    Expr *Index;
+      
+public:
+    CLIArrayConvertDiagnoser(Expr *ArraySize)
+    : ICEConvertDiagnoser(false, false), Index(Index) { }
+      
+    virtual DiagnosticBuilder diagnoseNotInt(Sema &S, SourceLocation Loc,
+                                            QualType T) {
+    return S.Diag(Loc, diag::err_array_size_not_integral)
+                << S.getLangOpts().CPlusPlus0x << T;
+    }
+      
+    virtual DiagnosticBuilder diagnoseIncomplete(Sema &S, SourceLocation Loc,
+                                                QualType T) {
+    return S.Diag(Loc, diag::err_array_size_incomplete_type)
+                << T << Index->getSourceRange();
+    }
+      
+    virtual DiagnosticBuilder diagnoseExplicitConv(Sema &S,
+                                                    SourceLocation Loc,
+                                                    QualType T,
+                                                    QualType ConvTy) {
+    return S.Diag(Loc, diag::err_array_size_explicit_conversion) << T << ConvTy;
+    }
+      
+    virtual DiagnosticBuilder noteExplicitConv(Sema &S,
+                                                CXXConversionDecl *Conv,
+                                                QualType ConvTy) {
+    return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
+                << ConvTy->isEnumeralType() << ConvTy;
+    }
+      
+    virtual DiagnosticBuilder diagnoseAmbiguous(Sema &S, SourceLocation Loc,
+                                                QualType T) {
+    return S.Diag(Loc, diag::err_array_size_ambiguous_conversion) << T;
+    }
+      
+    virtual DiagnosticBuilder noteAmbiguous(Sema &S, CXXConversionDecl *Conv,
+                                            QualType ConvTy) {
+    return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
+                << ConvTy->isEnumeralType() << ConvTy;
+    }
+      
+    virtual DiagnosticBuilder diagnoseConversion(Sema &S, SourceLocation Loc,
+                                                QualType T,
+                                                QualType ConvTy) {
+    return S.Diag(Loc,
+                    S.getLangOpts().CPlusPlus0x
+                    ? diag::warn_cxx98_compat_array_size_conversion
+                    : diag::ext_array_size_conversion)
+                << T << ConvTy->isEnumeralType() << ConvTy;
+    }
+};
+
+static ExprResult
+CreateCLIIndexedPropertyExpr(Sema &S, SourceLocation LLoc,
+                             SourceLocation RLoc, Expr *Base, Expr *Idx) {
+  ASTContext &Context = S.getASTContext();
+
+  // "In C++/CLI, a top-level comma inside [] is considered a list separator
+  // and not an operator, so X[i,j] would only match an indexed property
+  // taking two arguments.  If one wants a top-level comma operator, one 
+  // must write it inside parentheses, e.g., X[(i,j)].  This is true even
+  // when X does not have class type or handle to class type. end note]"
+
+  // Gather all expressions that are in comma expressions.
+  SmallVector<Expr *, 2> Exprs;
+  GatherCommaExpressions(Exprs, Idx);
+
+  if (const HandleType *HT = Base->getType()->getAs<HandleType>()) {
+    QualType Type = HT->getPointeeType();
+    if (const CLIArrayType *Arr = Type->getAs<CLIArrayType>()) {
+      // 24.3 "CLI array elements are accessed using postfix-expressions of
+      // the form A[I1, I2, …, IN], where A is an expression having a CLI
+      // array type, and each IX is an expression of integral type or a type
+      // that can be implicitly converted to an integral type. Instances of
+      // such expressions are referred to here as CLI array element accesses."
+      bool HasError = false;
+      SmallVector<Expr *, 4> IntExprs;
+    
+      for (unsigned i = 0; i < Exprs.size(); ++i) {
+        Expr *E = Exprs[i];
+        CLIArrayConvertDiagnoser Diagnoser(E);
+        ExprResult I = S.ConvertToIntegralOrEnumerationType(E->getLocStart(),
+          E, Diagnoser, /*AllowScopedEnums=*/false);
+      
+        if (I.isInvalid()) {
+          HasError = true;
+          continue;
+        }
+
+        IntExprs.push_back(I.get());
+      }
+    
+      if (HasError)
+        return ExprError();
+
+      if (IntExprs.size() != Arr->getRank()) {
+          S.Diag(Idx->getExprLoc(),
+            S.getDiagnostics().getCustomDiagID( DiagnosticsEngine::Error,
+          "specified too many dimensions to CLI array"));
+        return ExprError();
+      }
+
+      InitListExpr *Init = new (Context) InitListExpr(Context, LLoc, IntExprs,
+        RLoc);
+      Init->setType(Idx->getType());
+
+      return S.CreateBuiltinArraySubscriptExpr(Base, LLoc, Init, RLoc);
+    } else if (const CXXRecordDecl *RD = Type->getAsCXXRecordDecl()) {
+      llvm::SmallVector<CLIPropertyDecl *, 1> Properties;
+      // Search for property indexers on the record.
+      for (DeclContext::decl_iterator I = RD->decls_begin(), E = RD->decls_end();
+           I != E; ++I) {
+        Decl *D = *I;
+        CLIPropertyDecl *PD = dyn_cast<CLIPropertyDecl>(D);
+        if (!PD || !PD->isIndexer())
+          continue;
+        if (Exprs.size() != PD->IndexerTypes.size())
+          continue;
+        Properties.push_back(PD);
+      }
+
+      if (Properties.size() > 1) {
+        S.Diag(Idx->getExprLoc(),
+          S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+          "found multiple valid CLI record indexers"));
+        return ExprError();
+      } else if (Properties.size() == 1) {
+        CLIPropertyDecl *Prop = Properties[0];
+        CLIPropertyRefExpr *PRef = new (Context) CLIPropertyRefExpr(Prop,
+          Base, Exprs, S.Context.PseudoObjectTy, VK_RValue, OK_CLIProperty);
+
+        return PRef;
+      }
+    }
+  }
+
+  InitListExpr *Init = new (Context) InitListExpr(Context, LLoc, Exprs,
+    RLoc);
+  Init->setType(Idx->getType());
+
+  return S.CreateOverloadedArraySubscriptExpr(LLoc, RLoc, Base, Init);
+
+  S.Diag(Idx->getExprLoc(),
+    S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+    "error indexing CLI type"));
+  return ExprError();}
+
 ExprResult
 Sema::ActOnArraySubscriptExpr(Scope *S, Expr *Base, SourceLocation LLoc,
                               Expr *Idx, SourceLocation RLoc) {
@@ -3304,6 +3467,9 @@ Sema::ActOnArraySubscriptExpr(Scope *S, Expr *Base, SourceLocation LLoc,
     else if (RHSHandle)
       RD = RHSHandle->getPointeeType()->getAsCXXRecordDecl();
 
+    if ((RD && RD->isCLIRecord())) {
+      return CreateCLIIndexedPropertyExpr(*this, LLoc, RLoc, Base, Idx);
+    }
   }
 
   if (getLangOpts().CPlusPlus &&
