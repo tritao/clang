@@ -117,7 +117,7 @@ LAST_TYPE(Atomic)
 #ifdef LEAF_TYPE
 LEAF_TYPE(Enum)
 LEAF_TYPE(Builtin)
-LEAF_TYPE(Record)
+//LEAF_TYPE(Record)
 LEAF_TYPE(InjectedClassName)
 LEAF_TYPE(ObjCInterface)
 LEAF_TYPE(TemplateTypeParm)

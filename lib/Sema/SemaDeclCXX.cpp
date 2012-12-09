@@ -6898,6 +6898,11 @@ Sema::ComputeDefaultedDefaultCtorExceptionSpec(SourceLocation Loc,
 
 CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
                                                      CXXRecordDecl *ClassDecl) {
+  if (getLangOpts().CPlusPlusCLI && ClassDecl->getTypeForDecl()->isCLIValueType()) {
+    llvm_unreachable("C++/CLI value classes do not declare implicit constructors");
+    return 0;
+  }
+
   // C++ [class.ctor]p5:
   //   A default constructor for a class X is a constructor of class X
   //   that can be called without an argument. If there is no

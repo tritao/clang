@@ -14,7 +14,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"
-#include "clang/Sema/SemaCXXCLI.h"
+#include "clang/Sema/SemaCLI.h"
 #include "TreeTransform.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
@@ -76,6 +76,11 @@ static NamedDecl *isAcceptableTemplateName(ASTContext &Context,
       if (ClassTemplateSpecializationDecl *Spec
             = dyn_cast<ClassTemplateSpecializationDecl>(Record))
         return Spec->getSpecializedTemplate();
+    }
+
+    // Handle C++/CLI generic classes.
+    if (Record->isCLIRecord() && Record->getCLIData()->isGeneric()) {
+      return Orig;
     }
 
     return 0;

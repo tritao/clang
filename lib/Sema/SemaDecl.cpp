@@ -9047,6 +9047,14 @@ CreateNewDecl:
     }
   }
 
+  if (CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(New)) {
+    if (isCLITagTypeKind(Kind)) {
+      CLIDefinitionData *Data = new (Context) CLIDefinitionData();
+      Data->Type = convertTagKindToCLIRecordType(Kind);
+      RD->setCLIData(Data);
+    }
+  }
+
   if (ModulePrivateLoc.isValid()) {
     if (isExplicitSpecialization)
       Diag(New->getLocation(), diag::err_module_private_specialization)

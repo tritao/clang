@@ -1667,6 +1667,11 @@ Sema::AccessResult Sema::CheckMemberOperatorAccess(SourceLocation OpLoc,
       Found.getAccess() == AS_public)
     return AR_accessible;
 
+  if (getLangOpts().CPlusPlusCLI) {
+    // FIXME: Do proper accessibility checking
+    return AR_accessible;
+  }
+
   const RecordType *RT = ObjectExpr->getType()->castAs<RecordType>();
   CXXRecordDecl *NamingClass = cast<CXXRecordDecl>(RT->getDecl());
 

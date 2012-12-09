@@ -1007,7 +1007,7 @@ Sema::ActOnCXXNew(SourceLocation StartLoc, bool UseGlobal,
 
   if (getLangOpts().CPlusPlusCLI) {
     if (CXXRecordDecl *RD = AllocType->getAsCXXRecordDecl()) {
-      if (RD->isCLIRecord() && (RD->getCLIData()->Type != CLI_ValueType)) {
+      if (RD->isCLIRecord() && (RD->getCLIData()->Type != CLI_RT_ValueType)) {
         DiagnosticsEngine &DE = getDiagnostics();
         Diag(StartLoc, DE.getCustomDiagID(DiagnosticsEngine::Error,
           "cannot allocate managed type using 'new', use 'gcnew'"));

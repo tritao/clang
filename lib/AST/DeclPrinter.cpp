@@ -212,6 +212,9 @@ void DeclPrinter::Print(AccessSpecifier AS) {
   case AS_public:    Out << "public"; break;
   case AS_protected: Out << "protected"; break;
   case AS_private:   Out << "private"; break;
+  case AS_internal:  Out << "internal"; break;
+  case AS_protected_private: Out << "protected private"; break;
+  case AS_protected_public:  Out << "protected public"; break;
   }
 }
 

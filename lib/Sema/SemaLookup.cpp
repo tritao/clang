@@ -544,6 +544,10 @@ static bool CanDeclareSpecialMemberFunction(ASTContext &Context,
 }
 
 void Sema::ForceDeclarationOfImplicitMembers(CXXRecordDecl *Class) {
+  // Only generate a default C++/CLI constructor.
+  if (Class->isCLIRecord() && Class->getTypeForDecl()->isCLIValueType())
+    return;
+
   if (!CanDeclareSpecialMemberFunction(Context, Class))
     return;
 
@@ -2460,6 +2464,9 @@ CXXConstructorDecl *Sema::LookupMovingConstructor(CXXRecordDecl *Class,
 
 /// \brief Look up the constructors for the given class.
 DeclContext::lookup_result Sema::LookupConstructors(CXXRecordDecl *Class) {
+  if (Class->isCLIRecord() && Class->getCLIData()->Type == CLI_RT_ValueType)
+    goto Lookup;
+
   // If the implicit constructors have not yet been declared, do so now.
   if (CanDeclareSpecialMemberFunction(Context, Class)) {
     if (Class->needsImplicitDefaultConstructor())
@@ -2470,6 +2477,7 @@ DeclContext::lookup_result Sema::LookupConstructors(CXXRecordDecl *Class) {
       DeclareImplicitMoveConstructor(Class);
   }
 
+Lookup:
   CanQualType T = Context.getCanonicalType(Context.getTypeDeclType(Class));
   DeclarationName Name = Context.DeclarationNames.getCXXConstructorName(T);
   return Class->lookup(Name);

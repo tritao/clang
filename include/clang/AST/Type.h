@@ -1598,6 +1598,9 @@ public:
   bool isAtomicType() const;                    // C11 _Atomic()
 
   // CLI tests
+  bool isCLIRecordType() const;
+  bool isCLIValueType() const;
+  bool isCLIReferenceType() const;
   bool isCLIArrayType() const;
 
   /// Determines if this type, which must satisfy
@@ -1682,6 +1685,7 @@ public:
   // Type Checking Functions: Check to see if this type is structurally the
   // specified type, ignoring typedefs and qualifiers, and return a pointer to
   // the best type we can.
+  const RecordType *getAsRecordType() const;
   const RecordType *getAsStructureType() const;
   /// NOTE: getAs*ArrayType are methods on ASTContext.
   const RecordType *getAsUnionType() const;
@@ -3920,7 +3924,21 @@ enum TagTypeKind {
   /// \brief The "class" keyword.
   TTK_Class,
   /// \brief The "enum" keyword.
-  TTK_Enum
+  TTK_Enum,
+
+  /// C++/CLI extensions.
+  /// \brief The "ref class" keywords.
+  TTK_RefClass,
+  /// \brief The "ref struct" keywords.
+  TTK_RefStruct,
+  /// \brief The "value class" keywords.
+  TTK_ValueClass,
+  /// \brief The "value struct" keywords.
+  TTK_ValueStruct,
+  /// \brief The "interface class" keywords.
+  TTK_InterfaceClass,
+  /// \brief The "interface struct" keywords.
+  TTK_InterfaceStruct,
 };
 
 /// \brief The elaboration keyword that precedes a qualified type name or

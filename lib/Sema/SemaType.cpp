@@ -768,6 +768,13 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   case DeclSpec::TST_enum:
   case DeclSpec::TST_union:
   case DeclSpec::TST_struct:
+  // C++/CLI extensions
+  case DeclSpec::TST_ref_class:
+  case DeclSpec::TST_ref_struct:
+  case DeclSpec::TST_value_class:
+  case DeclSpec::TST_value_struct:
+  case DeclSpec::TST_interface_class:
+  case DeclSpec::TST_interface_struct:
   case DeclSpec::TST_interface: {
     TypeDecl *D = dyn_cast_or_null<TypeDecl>(DS.getRepAsDecl());
     if (!D) {
@@ -1915,6 +1922,13 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       case TTK_Union:  Error = 2; /* Union member */ break;
       case TTK_Class:  Error = 3; /* Class member */ break;
       case TTK_Interface: Error = 4; /* Interface member */ break;
+      // C++/CLI extensions
+      case TTK_RefClass:   Error = 1; break;
+      case TTK_RefStruct:  Error = 1; break;
+      case TTK_ValueClass: Error = 1; break;
+      case TTK_ValueStruct:      Error = 1; break;
+      case TTK_InterfaceClass:   Error = 1; break;
+      case TTK_InterfaceStruct:  Error = 1; break;
       }
       break;
     case Declarator::CXXCatchContext:

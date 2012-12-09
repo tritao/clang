@@ -3726,6 +3726,7 @@ static void TryDefaultInitialization(Sema &S,
   //   To default-initialize an object of type T means:
   //     - if T is an array type, each element is default-initialized;
   QualType DestType = S.Context.getBaseElementType(Entity.getType());
+
          
   //     - if T is a (possibly cv-qualified) class type (Clause 9), the default
   //       constructor for T is called (and the initialization is ill-formed if
@@ -4230,6 +4231,11 @@ InitializationSequence::InitializationSequence(Sema &S,
   }
   assert(NumArgs == 1 && "Zero-argument case handled above");
 
+  // C++/CLI value type boxing
+  if (DestType->isHandleType() && SourceType->isCLIValueType()) {
+    goto SkipConversions;
+  }
+
   //    - Otherwise, if the source type is a (possibly cv-qualified) class
   //      type, conversion functions are considered.
   if (!SourceType.isNull() && SourceType->isRecordType()) {
@@ -4237,6 +4243,8 @@ InitializationSequence::InitializationSequence(Sema &S,
     MaybeProduceObjCObject(S, *this, Entity);
     return;
   }
+
+SkipConversions:
 
   //    - Otherwise, the initial value of the object being initialized is the
   //      (possibly converted) value of the initializer expression. Standard
