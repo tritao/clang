@@ -590,6 +590,12 @@ public:
   /// Subclasses may override this routine to provide different behavior.
   QualType RebuildPointerType(QualType PointeeType, SourceLocation Sigil);
 
+  /// \brief Build a new handle type given its pointee type.
+  ///
+  /// By default, performs semantic analysis when building the handle type.
+  /// Subclasses may override this routine to provide different behavior.
+  QualType RebuildHandleType(QualType HandleType, SourceLocation Caret);
+
   /// \brief Build a new block pointer type given its pointee type.
   ///
   /// By default, performs semantic analysis when building the block pointer
@@ -3570,22 +3576,20 @@ TreeTransform<Derived>::TransformBlockPointerType(TypeLocBuilder &TLB,
 template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformHandleType(TypeLocBuilder &TLB,
-                                                  HandleTypeLoc TL) {
+                                            HandleTypeLoc TL) {
   QualType PointeeType
     = getDerived().TransformType(TLB, TL.getPointeeLoc());
   if (PointeeType.isNull())
     return QualType();
   
   QualType Result = TL.getType();
-#if CIL
   if (getDerived().AlwaysRebuild() ||
       PointeeType != TL.getPointeeLoc().getType()) {
     Result = getDerived().RebuildHandleType(PointeeType,
-                                                  TL.getSigilLoc());
+                                            TL.getSigilLoc());
     if (Result.isNull())
       return QualType();
   }
-#endif
 
   HandleTypeLoc NewT = TLB.push<HandleTypeLoc>(Result);
   NewT.setCaretLoc(TL.getCaretLoc());
@@ -9028,6 +9032,13 @@ QualType TreeTransform<Derived>::RebuildPointerType(QualType PointeeType,
                                                     SourceLocation Star) {
   return SemaRef.BuildPointerType(PointeeType, Star,
                                   getDerived().getBaseEntity());
+}
+
+template<typename Derived>
+QualType TreeTransform<Derived>::RebuildHandleType(QualType HandleType,
+                                                   SourceLocation Caret) {
+  return SemaRef.BuildHandleType(HandleType, Caret,
+                                 getDerived().getBaseEntity());
 }
 
 template<typename Derived>
