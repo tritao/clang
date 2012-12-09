@@ -13,8 +13,10 @@
 
 #include "clang/AST/Stmt.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/ASTContext.h"
@@ -1045,4 +1047,24 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
                                        SourceLocation Loc,
                                        Stmt *Block) {
   return new(C)SEHFinallyStmt(Loc,Block);
+}
+
+// C++/CLI statements
+
+CLIForEachStmt::CLIForEachStmt(VarDecl *LoopVar,
+                  Stmt *Collection, Stmt *Body,
+                  SourceLocation FL, SourceLocation EL, SourceLocation IL,
+                  SourceLocation RPL)
+  : Stmt(CLIForEachStmtClass), LoopVar(LoopVar),
+    ForLoc(FL), EachLoc(EL), InLoc(IL), RParenLoc(RPL) {
+  SubExprs[COLLECTION] = Collection;
+  SubExprs[BODY] = Body;
+}
+
+VarDecl *CLIForEachStmt::getLoopVariable() {
+  return LoopVar;
+}
+
+const VarDecl *CLIForEachStmt::getLoopVariable() const {
+  return LoopVar;
 }
