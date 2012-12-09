@@ -4171,6 +4171,8 @@ static bool isPtrOperatorToken(tok::TokenKind Kind, const LangOptions &Lang) {
 /// [C++0x] '&&'
 /// [GNU]   '&' restrict[opt] attributes[opt]
 /// [GNU?]  '&&' restrict[opt] attributes[opt]
+/// [CX]    '^ 'cv-qualifier-seq[opt]
+/// [CX]    '%'
 ///         '::'[opt] nested-name-specifier '*' cv-qualifier-seq[opt]
 void Parser::ParseDeclaratorInternal(Declarator &D,
                                      DirectDeclParseFunction DirectDeclParser) {
@@ -4226,6 +4228,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
 
   // Otherwise, '*' -> pointer, '^' -> block, '&' -> lvalue reference,
   // '&&' -> rvalue reference
+  // In C++/CLI mode, we have '^' -> handle, '%' -> tracking reference
   SourceLocation Loc = ConsumeToken();  // Eat the *, ^, & or &&.
   D.SetRangeEnd(Loc);
 
@@ -4245,6 +4248,12 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
                                                 DS.getConstSpecLoc(),
                                                 DS.getVolatileSpecLoc(),
                                                 DS.getRestrictSpecLoc()),
+                    DS.getAttributes(),
+                    SourceLocation());
+    else if (getLangOpts().isCPlusPlusCXorCLI())
+      // Remember that we parsed an Handle type, and remember the type-quals.
+      D.AddTypeInfo(DeclaratorChunk::getHandlePointer(DS.getTypeQualifiers(),
+                                                     Loc),
                     DS.getAttributes(),
                     SourceLocation());
     else
