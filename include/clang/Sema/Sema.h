@@ -7326,6 +7326,11 @@ public:
   // \brief Loads managed assemblies 
   void LoadManagedAssembly(FileID FID);
 
+  // C++/CLI for each statement.
+  StmtResult ActOnCLIForEachStmt(SourceLocation ForLoc, SourceLocation EachLoc,
+                                 SourceLocation LParenLoc, SourceLocation InLoc,
+                                 Decl *LoopVar, Expr *Assignment,
+                                 SourceLocation RParenLoc, Stmt *Body);
 
   bool CheckHandleConversion(Expr *From, QualType ToType, CastKind &Kind,
                              CXXCastPath &BasePath, bool IgnoreBaseAccess);
