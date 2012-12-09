@@ -1613,7 +1613,8 @@ private:
   void ParseObjCTypeQualifierList(ObjCDeclSpec &DS,
                                   Declarator::TheContext Context);
 
-  void ParseEnumSpecifier(SourceLocation TagLoc, DeclSpec &DS,
+  void ParseEnumSpecifier(tok::TokenKind TokenToAssume,
+                          SourceLocation TagLoc, DeclSpec &DS,
                           const ParsedTemplateInfo &TemplateInfo,
                           AccessSpecifier AS, DeclSpecContext DSC);
   void ParseEnumBody(SourceLocation StartLoc, Decl *TagDecl);
@@ -2070,7 +2071,7 @@ private:
                                     SourceLocation &EndLocation);
   void ParseBaseClause(Decl *ClassDecl);
   BaseResult ParseBaseSpecifier(Decl *ClassDecl);
-  AccessSpecifier getAccessSpecifierIfPresent() const;
+  AccessSpecifier getAccessSpecifierIfPresent();
 
   bool ParseUnqualifiedIdTemplateId(CXXScopeSpec &SS,
                                     SourceLocation TemplateKWLoc,
@@ -2181,6 +2182,8 @@ private:
 
 public:
   void ParseCLIAttribute(ParsedAttributes &Attrs);
+  
+  VirtSpecifiers::Specifier isCLIVirtSpecifier(const Token &Tok) const;
 
   // C++/CLI context sensitive keyword support code.
   enum CLIContextSensitiveKeywords {
@@ -2194,6 +2197,22 @@ public:
     return CLIContextKeywords[Kw];
   }
 
+  // Tries to converts the current token to an access specifier. If AllowExt is
+  // true, then we also try to match the extended C++/CLI access specifiers.
+  AccessSpecifier ConvertTokenToAccessSpecifier(bool AllowExt = true) const;
+
+  // Tries to convert the current token to a tag type specifier.
+  DeclSpec::TST ConvertTokenToTagTypeSpecifier() const;
+
+  // Tries to convert the given token to a basic 
+  CLIContextSensitiveKeywords ConvertTokenToCLITagKeyword(const Token& Tok);
+
+  // Tries to parse a C++/CX tag visibility keyword.
+  bool ParseTagVisibility(AccessSpecifier& Visibility, SourceLocation& Loc);
+
+  // Tries to parse the an aggregate class keyword and inject it into the stream.
+  bool ParseAggregateClassKeywords(const Token& Tok1, const Token& Tok2,
+    Token& Res);
 };
 
 }  // end namespace clang

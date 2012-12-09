@@ -21,6 +21,89 @@
 #include "llvm/ADT/SmallVector.h"
 using namespace clang;
 
+Parser::CLIContextSensitiveKeywords Parser::ConvertTokenToCLITagKeyword(
+                                                       const Token& Tok) {
+  if (IdentifierInfo *II = Tok.getIdentifierInfo()) {
+    if (II == CLIContextKeywords[cli_ref])
+      return cli_ref;
+    else if (II == CLIContextKeywords[cli_value])
+      return cli_value;
+    else if (II == CLIContextKeywords[cli_interface])
+      return cli_interface;
+  }
+  return cli_NumKeywords;
+}
+
+/// \brief Parse a C++/CX aggregate keyword.
+bool Parser::ParseAggregateClassKeywords(const Token& Tok1, const Token& Tok2,
+                                         Token& Res) { 
+  CLIContextSensitiveKeywords TagKw = ConvertTokenToCLITagKeyword(Tok1);
+  if (TagKw == cli_NumKeywords) return false;
+
+  // If we have a context sensitive keyword, check the next token to see
+  // if it is a valid C++/CX tag type specifier combination.
+
+  tok::TokenKind Kind = tok::unknown;
+  tok::TokenKind NextKind = Tok2.getKind();
+
+  switch(TagKw) {
+  case cli_ref:
+    if (NextKind == tok::kw_class)
+      Kind = tok::kw_ref_class;
+    else if(NextKind == tok::kw_struct)
+      Kind = tok::kw_ref_struct;
+    break;
+  case cli_value:
+    if (NextKind == tok::kw_class)
+      Kind = tok::kw_value_class;
+    else if(NextKind == tok::kw_struct)
+      Kind = tok::kw_value_struct;
+    break;
+  case cli_interface:
+    if (NextKind == tok::kw_class)
+      Kind = tok::kw_interface_class;
+    else if(NextKind == tok::kw_struct)
+      Kind = tok::kw_interface_struct;
+    break;
+  default: break;
+  }
+
+  if (Kind == tok::unknown)
+    return false;
+
+  SourceManager &S = getPreprocessor().getSourceManager();
+  const unsigned TokLen = S.getFileOffset(Tok2.getLastLoc())
+      - S.getFileOffset(Tok1.getLocation());
+  
+  // Initialize a new token consisting of the aggregate keywords.
+  Res.startToken();
+  Res.setKind(Kind);
+  Res.setLocation(Tok1.getLocation());
+  Res.setLength(TokLen);
+
+  return true;
+}
+
+/// \brief Parse a C++/CX tag visibility keyword.
+bool Parser::ParseTagVisibility(AccessSpecifier& Visibility,
+                                SourceLocation& Loc) {
+  Visibility = AS_private;
+
+  // Try to parse the top level visibility of the class.
+  Loc = Tok.getLocation();
+  AccessSpecifier Acc = getAccessSpecifierIfPresent();
+  
+  if (Acc == AS_none)
+    return false;
+
+  if (Acc == AS_public || Acc == AS_private)
+    Visibility = Acc;
+  else
+    Diag(diag::err_cx_invalid_class_access_specifier)
+                        << GetAccessSpecifierName(Acc)
+                        << FixItHint::CreateReplacement(Loc, "private");
+  return true;
+}
 
 /// \brief Parse a C++/CLI attribute-target.
 ///
@@ -169,4 +252,28 @@ void Parser::ParseCLIAttribute(ParsedAttributes &Attrs) {
 
 Exit:
   SkipUntil(tok::r_square, /*StopAtSemi=*/true, /*DontConsume=*/true);
+}
+
+/// \brief Determine whether the given token is a C++/CLI virt-specifier.
+///
+///       virt-specifier:
+///         abstract
+///         new
+///         sealed
+///         override
+VirtSpecifiers::Specifier Parser::isCLIVirtSpecifier(const Token &Tok) const {
+  if (Tok.is(tok::identifier)) {
+    IdentifierInfo *II = Tok.getIdentifierInfo();
+
+    if (II == CLIContextKeywords[cli_abstract])
+      return VirtSpecifiers::VS_Abstract;
+    if (II == CLIContextKeywords[cli_sealed])
+      return VirtSpecifiers::VS_Sealed;
+    else if (II == CLIContextKeywords[cli_override])
+      return VirtSpecifiers::VS_Override;
+  } else if (Tok.is(tok::kw_new)) {
+      return VirtSpecifiers::VS_New;
+  }
+
+  return VirtSpecifiers::VS_None;
 }
