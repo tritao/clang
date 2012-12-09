@@ -57,20 +57,24 @@ namespace clang {
   /// better conversion kinds have smaller values.
   enum ImplicitConversionKind {
     ICK_Identity = 0,          ///< Identity conversion (no conversion)
+    ICK_Literal_To_String,     ///< String literal conversion (C++/CLI 14.2.5)
     ICK_Lvalue_To_Rvalue,      ///< Lvalue-to-rvalue conversion (C++ 4.1)
     ICK_Array_To_Pointer,      ///< Array-to-pointer conversion (C++ 4.2)
     ICK_Function_To_Pointer,   ///< Function-to-pointer (C++ 4.3)
     ICK_NoReturn_Adjustment,   ///< Removal of noreturn from a type (Clang)
     ICK_Qualification,         ///< Qualification conversions (C++ 4.4)
+    ICK_Boolean_Equivalence,   ///< Boolean equivalence (C++/CLI 14.3.3)
     ICK_Integral_Promotion,    ///< Integral promotions (C++ 4.5)
     ICK_Floating_Promotion,    ///< Floating point promotions (C++ 4.6)
     ICK_Complex_Promotion,     ///< Complex promotions (Clang extension)
+    ICK_Boxing_Conversion,     ///< Boxing conversions (C++/CLI 14.2.6)
     ICK_Integral_Conversion,   ///< Integral conversions (C++ 4.7)
     ICK_Floating_Conversion,   ///< Floating point conversions (C++ 4.8)
     ICK_Complex_Conversion,    ///< Complex conversions (C99 6.3.1.6)
     ICK_Floating_Integral,     ///< Floating-integral conversions (C++ 4.9)
     ICK_Pointer_Conversion,    ///< Pointer conversions (C++ 4.10)
     ICK_Pointer_Member,        ///< Pointer-to-member conversions (C++ 4.11)
+    ICK_Handle_Conversion,     ///< Handle conversions (C++/CLI 14.2.1)
     ICK_Boolean_Conversion,    ///< Boolean conversions (C++ 4.12)
     ICK_Compatible_Conversion, ///< Conversions between compatible types in C99
     ICK_Derived_To_Base,       ///< Derived-to-base (C++ [over.best.ics])
@@ -402,7 +406,7 @@ namespace clang {
     };
 
     /// ConversionKind - The kind of implicit conversion sequence.
-    unsigned ConversionKind : 30;
+    unsigned ConversionKind : 29;
 
     /// \brief Whether the argument is an initializer list.
     bool ListInitializationSequence : 1;
@@ -410,6 +414,9 @@ namespace clang {
     /// \brief Whether the target is really a std::initializer_list, and the
     /// sequence only represents the worst element conversion.
     bool StdInitializerListElement : 1;
+
+    /// \brief Whether the argument is a CLI params array conversion.
+    bool IsCLIParamsArrayConversion : 1;
 
     void setKind(Kind K) {
       destruct();
@@ -441,7 +448,8 @@ namespace clang {
 
     ImplicitConversionSequence() 
       : ConversionKind(Uninitialized), ListInitializationSequence(false),
-        StdInitializerListElement(false)
+        StdInitializerListElement(false),
+        IsCLIParamsArrayConversion(false)
     {}
     ~ImplicitConversionSequence() {
       destruct();
@@ -542,6 +550,15 @@ namespace clang {
 
     void setListInitializationSequence() {
       ListInitializationSequence = true;
+    }
+
+    /// \brief Whether the argument is a CLI params array conversion.
+    bool isCLIParamsArrayConversion() const {
+      return IsCLIParamsArrayConversion;
+    }
+
+    void setCLIParamsArrayConversion() {
+      IsCLIParamsArrayConversion = true;
     }
 
     /// \brief Whether the target is really a std::initializer_list, and the

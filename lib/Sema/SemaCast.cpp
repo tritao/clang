@@ -943,6 +943,14 @@ static TryCastResult TryStaticCast(Sema &Self, ExprResult &SrcExpr,
     Kind = CK_BitCast;
     return TC_Success;
   }
+
+  // Allow arbitrary C++/CLI handle conversion with static casts.
+  if (Self.getLangOpts().CPlusPlusCLI) {
+    if (SrcType->isHandleType() && DestType->isHandleType()) {
+      Kind = CK_BitCast;
+      return TC_Success;
+    }
+  }
   
   // We tried everything. Everything! Nothing works! :-(
   return TC_NotApplicable;

@@ -1084,6 +1084,63 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     return CGF.EmitDynamicCast(V, DCE);
   }
 
+  case CK_CLI_StringToHandle: {
+    // This handles the conversion of string literals to C++/CLI handles.
+    assert(E->getType()->isArrayType() &&
+           "Array to pointer decay must have array source type!");
+
+    const StringLiteral *SL = dyn_cast<StringLiteral>(E);
+    assert(SL && "Expected a valid string literal");
+
+    llvm::Instruction *CallInst = Builder.CreateCall(
+      CGF.CGM.getIntrinsic(llvm::Intrinsic::cil_ldstr));
+
+    llvm::MDString *Str = llvm::MDString::get(CGF.getLLVMContext(),
+      SL->getString());
+
+    CallInst->setMetadata("cil.str", llvm::MDNode::get(CGF.getLLVMContext(),
+      Str));
+
+    return CGF.Builder.CreateBitCast(CallInst, ConvertType(DestTy));
+  }
+
+  case CK_CLI_DerivedToBaseHandle: {
+    assert(E->getType()->isHandleType() && 
+           "C++/CLI derived to base handle conversion needs an handle type");
+
+    return CGF.Builder.CreateBitCast(Visit(E), ConvertType(DestTy));
+  }
+
+  case CK_CLI_NullToHandle: {
+    llvm::Instruction *CallInst = Builder.CreateCall(
+      CGF.CGM.getIntrinsic(llvm::Intrinsic::cil_ldnull));
+
+    return CGF.Builder.CreateBitCast(CallInst, ConvertType(DestTy));
+  }
+
+  case CK_CLI_BoxValueToHandle: {
+    assert(CE->path_size() == 1);
+    
+    CXXBaseSpecifier *Spec = *CE->path_begin();
+    QualType RecordType = Spec->getType();
+
+    CXXRecordDecl *RD = RecordType->getAsCXXRecordDecl();
+    assert(RD->isCLIRecord());
+
+    llvm::Type *RTy = ConvertType(RecordType)->getPointerTo();
+    llvm::PointerType *PTy = cast<llvm::PointerType>(RTy);
+    llvm::Constant *Null = llvm::ConstantPointerNull::get(PTy);
+
+    llvm::SmallVector<llvm::Value *, 2> Args;
+    Args.push_back(Visit(E));
+    Args.push_back(Null);
+
+    llvm::Instruction *CallInst = Builder.CreateCall(
+      CGF.CGM.getIntrinsic(llvm::Intrinsic::cil_box), Args);
+
+    return CGF.Builder.CreateBitCast(CallInst, ConvertType(DestTy));
+  }
+
   case CK_ArrayToPointerDecay: {
     assert(E->getType()->isArrayType() &&
            "Array to pointer decay must have array source type!");

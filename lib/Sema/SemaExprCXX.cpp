@@ -2694,6 +2694,11 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
   return Owned(From);
 }
 
+// In SemaCLI.cpp
+namespace clang {
+QualType GetBoxingConversionValueType(Sema &S, QualType FromType);
+} // end namespace clang
+
 /// PerformImplicitConversion - Perform an implicit conversion of the
 /// expression From to the type ToType by following the standard
 /// conversion sequence SCS. Returns the converted
@@ -2764,6 +2769,13 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     ExprResult FromRes = DefaultLvalueConversion(From);
     assert(!FromRes.isInvalid() && "Can't perform deduced conversion?!");
     From = FromRes.take();
+    break;
+  }
+
+  case ICK_Literal_To_String: {
+    assert(From->getStmtClass() == Stmt::StringLiteralClass);
+    From = ImpCastExprToType(From, ToType, CK_CLI_StringToHandle, 
+                             VK_RValue, /*BasePath=*/0, CCK).take();
     break;
   }
 
@@ -2931,6 +2943,33 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
                              VK_RValue, /*BasePath=*/0, CCK).take();
     break;
 
+  case ICK_Boxing_Conversion: {
+    CastKind Kind = CK_CLI_BoxValueToHandle;
+    
+    QualType Ty = GetBoxingConversionValueType(*this, From->getType());
+    assert(!Ty.isNull());
+
+    CXXBaseSpecifier *Spec = new (Context) CXXBaseSpecifier(
+      SourceRange(), 0, 0, AS_none, Context.getTrivialTypeSourceInfo(Ty),
+      SourceLocation());
+
+    CXXCastPath BasePath;
+    BasePath.push_back(Spec);
+    From = ImpCastExprToType(From, ToType, Kind, VK_RValue, &BasePath, CCK)
+             .take();
+    break;
+  }
+
+  case ICK_Handle_Conversion: {
+    CastKind Kind = CK_Invalid;
+    CXXCastPath BasePath;
+    if (CheckHandleConversion(From, ToType, Kind, BasePath, CStyle))
+      return ExprError();
+    From = ImpCastExprToType(From, ToType, Kind, VK_RValue, &BasePath, CCK)
+             .take();
+    break;
+  }
+
   case ICK_Derived_To_Base: {
     CXXCastPath BasePath;
     if (CheckDerivedToBaseConversion(From->getType(),
@@ -3033,6 +3072,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
   case ICK_Function_To_Pointer:
   case ICK_Qualification:
   case ICK_Num_Conversion_Kinds:
+  case ICK_Literal_To_String:
     llvm_unreachable("Improper second standard conversion");
   }
 

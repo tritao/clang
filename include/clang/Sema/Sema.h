@@ -7326,6 +7326,12 @@ public:
   // \brief Loads managed assemblies 
   void LoadManagedAssembly(FileID FID);
 
+
+  bool CheckHandleConversion(Expr *From, QualType ToType, CastKind &Kind,
+                             CXXCastPath &BasePath, bool IgnoreBaseAccess);
+  bool CheckBoxingConversion(Expr *From, QualType ToType, CastKind &Kind,
+                             CXXCastPath &BasePath, bool IgnoreBaseAccess);
+
 };
 
 /// \brief RAII object that enters a new expression evaluation context.
