@@ -2147,27 +2147,36 @@ static TypeResult ActOnCLIArray(Sema &S, TemplateDecl *TD,
   uint64_t Dimensions = Rank.getLimitedValue();
   if (Dimensions < 1 || Dimensions > 32) {
     S.Diag(TD->getLocation(), S.getDiagnostics().getCustomDiagID(
-             DiagnosticsEngine::Error,
-             "managed array dimensions must be between 1 and 32"));
+      DiagnosticsEngine::Error,
+      "managed array dimensions must be between 1 and 32"));
     return ParsedType();
   }
-  
+
   return ParsedType::make(S.getASTContext().getCLIArrayType(ElementType,
-    Dimensions, Decl));
+    Dimensions, S.getCLIContext()->Types.Array.Decl));
 }
 
 static TypeResult ActOnCLIInteriorPtr(Sema &S, TemplateDecl *TD,
                                       QualType Result) {
+  S.Diag(TD->getLocation(), S.getDiagnostics().getCustomDiagID(
+    DiagnosticsEngine::Error,
+    "interior_ptr<> is not supported yet"));
   return ParsedType();
 }
 
 static TypeResult ActOnCLIPinPtr(Sema &S, TemplateDecl *TD,
                                  QualType Result) {
+  S.Diag(TD->getLocation(), S.getDiagnostics().getCustomDiagID(
+    DiagnosticsEngine::Error,
+    "pin_ptr<> is not supported yet"));
   return ParsedType();
 }
 
 static TypeResult ActOnCLISafeCast(Sema &S, TemplateDecl *TD,
                                    QualType Result) {
+  S.Diag(TD->getLocation(), S.getDiagnostics().getCustomDiagID(
+    DiagnosticsEngine::Error,
+    "safe_cast<> is not supported yet"));
   return ParsedType();
 }
 
