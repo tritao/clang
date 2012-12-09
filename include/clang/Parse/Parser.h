@@ -2181,6 +2181,19 @@ private:
 
 public:
   void ParseCLIAttribute(ParsedAttributes &Attrs);
+
+  // C++/CLI context sensitive keyword support code.
+  enum CLIContextSensitiveKeywords {
+    cli_not_keyword,
+#define CXX_CX_CONTEXT_KEYWORD(X) cli_##X,
+#include "clang/Basic/TokenKinds.def"
+    cli_NumKeywords
+  };
+  IdentifierInfo *CLIContextKeywords[cli_NumKeywords];
+  IdentifierInfo *getCLIContextKeyword(CLIContextSensitiveKeywords Kw) {
+    return CLIContextKeywords[Kw];
+  }
+
 };
 
 }  // end namespace clang

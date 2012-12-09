@@ -524,6 +524,13 @@ void Parser::Initialize() {
     PP.SetPoisonReason(Ident___abnormal_termination,diag::err_seh___finally_block);
     PP.SetPoisonReason(Ident_AbnormalTermination,diag::err_seh___finally_block);
   }
+
+  // Initialization for C++/CLI context sensitive keywords recognition.
+  if (getLangOpts().isCPlusPlusCXorCLI()) {
+#define CXX_CX_CONTEXT_KEYWORD(X) \
+    CLIContextKeywords[cli_##X] = &PP.getIdentifierTable().get(#X);
+#include "clang/Basic/TokenKinds.def"
+  }
 }
 
 namespace {
