@@ -19,6 +19,7 @@ add_clang_library(clangAST
   DeclarationName.cpp
   DeclBase.cpp
   DeclCXX.cpp
+  DeclCLI.cpp
   DeclFriend.cpp
   DeclGroup.cpp
   DeclObjC.cpp
@@ -29,6 +30,7 @@ add_clang_library(clangAST
   ExprClassification.cpp
   ExprConstant.cpp
   ExprCXX.cpp
+  ExprCLI.cpp
   ExternalASTSource.cpp
   InheritViz.cpp
   ItaniumCXXABI.cpp
