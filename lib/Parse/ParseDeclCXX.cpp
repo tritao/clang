@@ -996,6 +996,9 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
 ///       class-specifier: [C++ class]
 ///         class-head '{' member-specification[opt] '}'
 ///         class-head '{' member-specification[opt] '}' attributes[opt]
+/// [CLI/CX]
+///         attributes[opt] top-level-visibility[opt] class-head
+///                          '{' member-specification[opt] '}'
 ///       class-head:
 ///         class-key identifier[opt] base-clause[opt]
 ///         class-key nested-name-specifier identifier base-clause[opt]
@@ -1028,7 +1031,7 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
 ///       struct-or-union:
 ///         'struct'
 ///         'union'
-void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
+
                                  SourceLocation StartLoc, DeclSpec &DS,
                                  const ParsedTemplateInfo &TemplateInfo,
                                  AccessSpecifier AS, 
@@ -1725,6 +1728,13 @@ bool Parser::isCXX0XFinalKeyword() const {
 /// [C++0x] static_assert-declaration
 ///         template-declaration
 /// [GNU]   '__extension__' member-declaration
+///
+/// [C++CLI] attributes[opt] initonly-or-literal[opt] decl-specifier-seq[opt]
+///            member-declarator-list[opt] ';'
+///          generic-declaration 
+///          delegate-specifier 
+///          event-definition 
+///          property-definition 
 ///
 ///       member-declarator-list:
 ///         member-declarator
@@ -3046,7 +3056,10 @@ void Parser::ParseMicrosoftAttributes(ParsedAttributes &attrs,
   while (Tok.is(tok::l_square)) {
     // FIXME: If this is actually a C++11 attribute, parse it as one.
     ConsumeBracket();
-    SkipUntil(tok::r_square, true, true);
+    if (getLangOpts().isCPlusPlusCXorCLI())
+      ParseCLIAttribute(attrs);
+    else
+      SkipUntil(tok::r_square, true, true);
     if (endLoc) *endLoc = Tok.getLocation();
     ExpectAndConsume(tok::r_square, diag::err_expected_rsquare);
   }

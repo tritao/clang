@@ -3790,6 +3790,12 @@ public:
   bool CheckCXXCLIAllocatedType(QualType AllocType, SourceLocation Loc,
                           SourceRange R);
 
+  ActionResult<CLICustomAttribute*> ActOnCLIAttribute(Scope *S,
+                                          CLIAttributeTarget AttributeTarget,
+                                              SourceLocation TargetLoc,
+                                                   StringRef AttributeName,
+                                                MultiExprArg AttrArgs);
+
   /// ActOnUnaryTypeTrait - Parsed one of the unary type trait support
   /// pseudo-functions.
   ExprResult ActOnUnaryTypeTrait(UnaryTypeTrait OTT,

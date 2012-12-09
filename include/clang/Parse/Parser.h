@@ -2175,6 +2175,12 @@ private:
                                          MacroInfo *MacroInfo,
                                          unsigned ArgumentIndex);
   virtual void CodeCompleteNaturalLanguage();
+
+  //===--------------------------------------------------------------------===//
+  // C++/CLI extensions
+
+public:
+  void ParseCLIAttribute(ParsedAttributes &Attrs);
 };
 
 }  // end namespace clang

@@ -25,6 +25,7 @@ enum Kind {
 #define LAST_INHERITABLE_ATTR(X) X, LAST_INHERITABLE = X,
 #define LAST_INHERITABLE_PARAM_ATTR(X) X, LAST_INHERITABLE_PARAM = X,
 #include "clang/Basic/AttrList.inc"
+  CLICustomAttribute,
   NUM_ATTRS
 };
 

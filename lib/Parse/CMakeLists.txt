@@ -1,5 +1,6 @@
 add_clang_library(clangParse
   ParseAST.cpp
+  ParseCLI.cpp
   ParseCXXInlineMethods.cpp
   ParseDecl.cpp
   ParseDeclCXX.cpp
