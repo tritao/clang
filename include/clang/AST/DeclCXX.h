@@ -1534,6 +1534,8 @@ public:
   friend class ASTWriter;
 };
 
+class CLIMethodData;
+
 /// CXXMethodDecl - Represents a static or instance method of a
 /// struct/union/class.
 class CXXMethodDecl : public FunctionDecl {
@@ -1546,10 +1548,13 @@ protected:
                 bool isConstexpr, SourceLocation EndLocation)
     : FunctionDecl(DK, RD, StartLoc, NameInfo, T, TInfo,
                    (isStatic ? SC_Static : SC_None),
-                   SCAsWritten, isInline, isConstexpr) {
+                   SCAsWritten, isInline, isConstexpr), CLIData(0) {
     if (EndLocation.isValid())
       setRangeEnd(EndLocation);
   }
+
+  /// \brief C++/CLI-specific definition data.
+  CLIMethodData *CLIData;
 
 public:
   static CXXMethodDecl *Create(ASTContext &C, CXXRecordDecl *RD,
@@ -1563,7 +1568,11 @@ public:
                                SourceLocation EndLocation);
 
   static CXXMethodDecl *CreateDeserialized(ASTContext &C, unsigned ID);
-  
+ 
+  CLIMethodData *getCLIData() const { return CLIData; }
+  void setCLIData(CLIMethodData *Data) { CLIData = Data; }
+  bool isCLIMethod() const { return CLIData != 0; }
+
   bool isStatic() const { return getStorageClass() == SC_Static; }
   bool isInstance() const { return !isStatic(); }
 

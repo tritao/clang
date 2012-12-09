@@ -126,6 +126,32 @@ public:
   unsigned getNumInterfaces() const { return Interfaces.size(); }
 };
 
+class CLIMethodData {
+public:
+  CLIMethodData()
+    : MetadataToken(0), ReturnTemplateParamIndex(0) {
+  }
+
+  // CLI metadata token.
+  unsigned MetadataToken;
+
+  // CLI method full name.
+  std::string FullName;
+
+  // Template parameter index of return.
+  unsigned char ReturnTemplateParamIndex;
+
+  /// Returns the index of this parameter in its template specialization.
+  unsigned getReturnTemplateParamIndex() const {
+    return ReturnTemplateParamIndex;
+  }
+
+  /// Sets the index of this parameter in its template specialization.
+  void setReturnTemplateParamIndex(unsigned Index) {
+    ReturnTemplateParamIndex = (unsigned char)Index;
+  }
+};
+
 } // end namespace clang
 
 #endif
