@@ -278,6 +278,14 @@ public:
   static const TST TST_atomic = clang::TST_atomic;
   static const TST TST_error = clang::TST_error;
 
+  // C++/CLI extensions.
+  static const TST TST_ref_class = clang::TST_ref_class;
+  static const TST TST_ref_struct = clang::TST_ref_struct;
+  static const TST TST_value_class = clang::TST_value_class;
+  static const TST TST_value_struct = clang::TST_value_struct;
+  static const TST TST_interface_class = clang::TST_interface_class;
+  static const TST TST_interface_struct = clang::TST_interface_struct;
+
   // type-qualifiers
   enum TQ {   // NOTE: These flags must be kept in sync with Qualifiers::TQ.
     TQ_unspecified = 0,
@@ -378,9 +386,23 @@ private:
     return (T == TST_typeofExpr || T == TST_decltype);
   }
   static bool isDeclRep(TST T) {
-    return (T == TST_enum || T == TST_struct ||
-            T == TST_interface || T == TST_union ||
-            T == TST_class);
+    switch(T) {
+    case TST_enum:
+    case TST_struct:
+    case TST_interface:
+    case TST_union:
+    case TST_class:
+    // C++/CX and C++/CLI extensions
+    case TST_ref_class:
+    case TST_ref_struct:
+    case TST_value_class:
+    case TST_value_struct:
+    case TST_interface_class:
+    case TST_interface_struct:
+      return true;
+    default:
+      return false;
+    }
   }
 
   DeclSpec(const DeclSpec &) LLVM_DELETED_FUNCTION;
@@ -1972,7 +1994,11 @@ public:
   enum Specifier {
     VS_None = 0,
     VS_Override = 1,
-    VS_Final = 2
+    VS_Final = 2,
+    // C++/CLI extensions
+    VS_Abstract = 4,
+    VS_New = 8,
+    VS_Sealed = 16,
   };
 
   VirtSpecifiers() : Specifiers(0) { }
@@ -1996,6 +2022,7 @@ private:
   unsigned Specifiers;
 
   SourceLocation VS_overrideLoc, VS_finalLoc;
+  SourceLocation VS_abstractLoc, VS_newLoc, VS_sealedLoc;
   SourceLocation LastLocation;
 };
 
