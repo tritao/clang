@@ -5467,6 +5467,17 @@ Decl *Sema::ActOnStartNamespaceDef(Scope *NamespcScope,
         
         IsInline = PrevNS->isInline();
       }      
+      if (getLangOpts().CPlusPlusCLI &&
+          PrevNS == getCLIContext()->CLINamespace) {
+        // 17.1 Reserved namespaces
+        // The namespace cli is reserved. The only elements permitted
+        // in this namespace shall be those defined by the language 
+        // specification.
+        DiagnosticsEngine &DE = getDiagnostics();
+        Diag(NamespaceLoc, DE.getCustomDiagID( DiagnosticsEngine::Error,
+          "redefinition of language namespace is not allowed"));
+        IsInvalid = true;
+      }
     } else if (PrevDecl) {
       // This is an invalid name redefinition.
       Diag(Loc, diag::err_redefinition_different_kind)
