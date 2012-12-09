@@ -47,6 +47,7 @@ class StoredDeclsMap;
 class DependentDiagnostic;
 class ASTMutationListener;
 class CLIPropertyDecl;
+class CLIEventDecl;
 }
 
 namespace llvm {

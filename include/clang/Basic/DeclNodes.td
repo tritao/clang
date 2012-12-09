@@ -47,6 +47,7 @@ def Named : Decl<1>;
         def ParmVar : DDecl<Var>;
       def NonTypeTemplateParm : DDecl<Declarator>;
     def CLIProperty : DDecl<Value>;
+    def CLIEvent: DDecl<Value>;
   def Template : DDecl<Named, 1>;
     def RedeclarableTemplate : DDecl<Template, 1>;
       def FunctionTemplate : DDecl<RedeclarableTemplate>;

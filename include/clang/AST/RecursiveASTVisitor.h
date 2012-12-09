@@ -1411,6 +1411,10 @@ DEF_TRAVERSE_DECL(CLIPropertyDecl, {
     // FIXME: implement
   })
 
+DEF_TRAVERSE_DECL(CLIEventDecl, {
+    // FIXME: implement
+  })
+
 DEF_TRAVERSE_DECL(UsingDecl, {
     TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
     TRY_TO(TraverseDeclarationNameInfo(D->getNameInfo()));
