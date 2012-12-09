@@ -56,6 +56,76 @@ public:
   friend class ASTDeclWriter;
 };
 
+typedef CXXRecordDecl CLIRecordDecl;
+
+enum CLIGenericConstraintFlags {
+  // ILasm notation in comments
+  CLI_GCK_Covariant     = 0x01, // +
+  CLI_GCK_Contravariant = 0x02, // -
+  CLI_GCK_ReferenceTypeConstraint        = 0x04, // class
+  CLI_GCK_NotNullableValueTypeConstraint = 0x08, // valuetype
+  CLI_GCK_DefaultConstructorConstraint   = 0x10, // .ctor
+};
+
+struct CLIGenericParameter {
+  std::string Name;
+  unsigned char Flags; // CLIGenericConstraintFlags
+};
+
+enum CLIRecordType {
+  CLI_RT_ValueType,
+  CLI_RT_ReferenceType,
+  CLI_RT_InterfaceType
+};
+
+class CLIGenericData {
+public:
+
+  llvm::SmallVector<CLIGenericParameter, 4> Parameters;
+};
+
+class CLIDefinitionData {
+public:
+  CLIDefinitionData() : Kind(CLI_TK_None), GenericData(0) { }
+
+  /// Full name of the assembly.
+  std::string FullName;
+
+  /// Name of the assembly DLL.
+  std::string AssemblyName;
+
+  /// IR mangled name.
+  std::string IRName;
+
+  /// CLI record type.
+  CLIRecordType Type;
+
+  /// CLI type kind.
+  CLITypeKind Kind;
+
+  /// CLI generic definition data.
+  CLIGenericData *GenericData;
+
+  /// Gets the CLI generic definition data.
+  CLIGenericData *getGenericData() const { return GenericData; }
+
+  /// Sets the CLI generic definition data.
+  void setGenericData(CLIGenericData *D) { GenericData = D; }
+
+  /// Checks if record has CLI generic definition data.
+  bool isGeneric() { return getGenericData() != 0; }
+
+  /// Interfaces of this record.
+  typedef SmallVector<CXXBaseSpecifier *, 2> InterfacesVector;
+  InterfacesVector Interfaces;
+
+  /// Sets the interfaces of this struct or class.
+  void setInterfaces(InterfacesVector &);
+
+  /// Retrieves the number of interfaces of this class.
+  unsigned getNumInterfaces() const { return Interfaces.size(); }
+};
+
 } // end namespace clang
 
 #endif

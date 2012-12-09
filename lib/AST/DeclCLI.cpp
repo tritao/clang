@@ -18,6 +18,19 @@
 #include "llvm/ADT/SmallPtrSet.h"
 using namespace clang;
 
+CLIDefinitionData *CXXRecordDecl::getCLIData() const {
+  return CLIData;
+}
+
+void CXXRecordDecl::setCLIData(CLIDefinitionData *Data) {
+  assert(!CLIData && "Expected an invalid CLI class data");
+  CLIData = Data;
+}
+
+bool CXXRecordDecl::isCLIRecord() const {
+  return CLIData != 0;
+}
+
 void CLIPropertyDecl::anchor() { }
 
 CLIPropertyDecl::CLIPropertyDecl(DeclContext *DC, DeclarationName DN,

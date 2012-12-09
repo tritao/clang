@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTMutationListener.h"
@@ -73,6 +74,7 @@ CXXRecordDecl::CXXRecordDecl(Kind K, TagKind TK, DeclContext *DC,
                              IdentifierInfo *Id, CXXRecordDecl *PrevDecl)
   : RecordDecl(K, TK, DC, StartLoc, IdLoc, Id, PrevDecl),
     DefinitionData(PrevDecl ? PrevDecl->DefinitionData : 0),
+    CLIData(0),
     TemplateOrInstantiation() { }
 
 CXXRecordDecl *CXXRecordDecl::Create(const ASTContext &C, TagKind TK,

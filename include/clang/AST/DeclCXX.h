@@ -266,6 +266,8 @@ public:
   TypeSourceInfo *getTypeSourceInfo() const { return BaseTypeInfo; }
 };
 
+class CLIDefinitionData;
+
 /// CXXRecordDecl - Represents a C++ struct/union/class.
 /// FIXME: This class will disappear once we've properly taught RecordDecl
 /// to deal with C++-specific things.
@@ -652,12 +654,19 @@ class CXXRecordDecl : public RecordDecl {
 
   friend class ASTNodeImporter;
 
+  /// \brief C++/CLI-specific definition data.
+  CLIDefinitionData *CLIData;
+
 protected:
   CXXRecordDecl(Kind K, TagKind TK, DeclContext *DC,
                 SourceLocation StartLoc, SourceLocation IdLoc,
                 IdentifierInfo *Id, CXXRecordDecl *PrevDecl);
 
 public:
+  CLIDefinitionData *getCLIData() const;
+  void setCLIData(CLIDefinitionData *);
+  bool isCLIRecord() const;
+
   /// base_class_iterator - Iterator that traverses the base classes
   /// of a class.
   typedef CXXBaseSpecifier*       base_class_iterator;
