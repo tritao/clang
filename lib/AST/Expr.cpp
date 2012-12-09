@@ -1371,6 +1371,13 @@ void CastExpr::CheckCastConsistency() const {
   CheckNoBasePath:
     assert(path_empty() && "Cast kind should not have a base path!");
     break;
+
+  case CK_CLI_StringToHandle:
+  case CK_CLI_NullToHandle:
+  case CK_CLI_DerivedToBaseHandle:
+  case CK_CLI_BoxValueToHandle:
+  case CK_CLI_UnboxHandleToValue:
+    break;
   }
 }
 
@@ -1482,6 +1489,16 @@ const char *CastExpr::getCastKindName() const {
     return "CopyAndAutoreleaseBlockObject";
   case CK_BuiltinFnToFnPtr:
     return "BuiltinFnToFnPtr";
+  case CK_CLI_StringToHandle:
+    return "CLI_StringToHandle";
+  case CK_CLI_NullToHandle:
+    return "CLI_NullToHandle";
+  case CK_CLI_DerivedToBaseHandle:
+    return "CLI_DerivedToBaseHandle";
+  case CK_CLI_BoxValueToHandle:
+    return "CLI_BoxValueToHandle";
+  case CK_CLI_UnboxHandleToValue:
+    return "CLI_UnboxHandleToValue";
   }
 
   llvm_unreachable("Unhandled cast kind!");

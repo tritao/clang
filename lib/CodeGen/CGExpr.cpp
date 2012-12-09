@@ -2538,6 +2538,9 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
                                            ConvertType(ToType));
     return MakeAddrLValue(V, E->getType());
   }
+
+  case CK_CLI_StringToHandle:
+    break;
   }
   
   llvm_unreachable("Unhandled lvalue cast kind?");

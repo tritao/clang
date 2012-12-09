@@ -649,6 +649,7 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
   case CK_ARCExtendBlockObject:
   case CK_CopyAndAutoreleaseBlockObject:
   case CK_BuiltinFnToFnPtr:
+  case CK_CLI_StringToHandle:
     llvm_unreachable("cast kind invalid for aggregate types");
   }
 }

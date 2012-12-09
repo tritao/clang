@@ -5367,6 +5367,7 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
   case CK_IntegralComplexCast:
   case CK_IntegralComplexToFloatingComplex:
   case CK_BuiltinFnToFnPtr:
+  case CK_CLI_StringToHandle:
     llvm_unreachable("invalid cast kind for integral value");
 
   case CK_BitCast:
@@ -5854,6 +5855,7 @@ bool ComplexExprEvaluator::VisitCastExpr(const CastExpr *E) {
   case CK_ARCExtendBlockObject:
   case CK_CopyAndAutoreleaseBlockObject:
   case CK_BuiltinFnToFnPtr:
+  case CK_CLI_StringToHandle:
     llvm_unreachable("invalid cast kind for complex value");
 
   case CK_LValueToRValue:

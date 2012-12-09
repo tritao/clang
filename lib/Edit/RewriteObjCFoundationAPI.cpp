@@ -921,6 +921,12 @@ static bool rewriteToNumericBoxedExpression(const ObjCMessageExpr *Msg,
     case CK_NonAtomicToAtomic:
     case CK_CopyAndAutoreleaseBlockObject:
     case CK_BuiltinFnToFnPtr:
+    // C++/CLI extensions
+    case CK_CLI_StringToHandle:
+    case CK_CLI_BoxValueToHandle:
+    case CK_CLI_UnboxHandleToValue:
+    case CK_CLI_DerivedToBaseHandle:
+    case CK_CLI_NullToHandle:
       return false;
     }
   }
