@@ -2379,6 +2379,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
             break;
           case DeclaratorChunk::Function:
           case DeclaratorChunk::BlockPointer:
+          case DeclaratorChunk::Handle:
+          case DeclaratorChunk::TrackingReference:
             // These are invalid anyway, so just ignore.
             break;
           }
