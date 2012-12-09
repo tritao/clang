@@ -1142,7 +1142,8 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
   }
 #endif
 
-  if (CheckCXXCLIAllocatedType(AllocType, TypeRange.getBegin(), TypeRange))
+  QualType InitType;
+  if (CheckCLIGCNewType(AllocType, InitType, TypeRange.getBegin(), TypeRange))
     return ExprError();
 
   if (initStyle == CXXNewExpr::ListInit && isStdInitializerList(AllocType, 0)) {
@@ -1151,25 +1152,14 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
         << /*at end of FE*/0 << Inits[0]->getSourceRange();
   }
 
-  assert(AllocType->isRecordType() || isa<CLIArrayType>(AllocType));
-  QualType ResultType = Context.getHandleType(AllocType);
+  QualType ResultType = AllocType;
 
-  QualType InitType = AllocType;
-#if 0
-    if (InitListExpr *ILE = dyn_cast_or_null<InitListExpr>(Initializer)) {
-      // We do the initialization typechecking against the array type
-      // corresponding to the number of initializers + 1 (to also check
-      // default-initialization).
-      unsigned NumElements = ILE->getNumInits() + 1;
-      InitType = Context.getConstantArrayType(AllocType,
-          llvm::APInt(Context.getTypeSize(Context.getSizeType()), NumElements),
-                                              ArrayType::Normal, 0);
-    }
+  if (!ResultType->isHandleType()) {
+    ResultType = Context.getHandleType(ResultType);
   }
 
-  if (!AllocType->isDependentType() &&
-      !Expr::hasAnyTypeDependentArguments(
-        llvm::makeArrayRef(Inits, NumInits))) {
+  if (!AllocType->isDependentType() && !Expr::hasAnyTypeDependentArguments(
+    llvm::makeArrayRef(Inits, NumInits))) {
     // C++11 [expr.new]p15:
     //   A new-expression that creates an object of type T initializes that
     //   object as follows:
@@ -1195,6 +1185,8 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
     if (FullInit.isInvalid())
       return ExprError();
 
+    //TryImplicitConversion
+
     // FullInit is our initializer; strip off CXXBindTemporaryExprs, because
     // we don't want the initialized object to be destructed.
     if (CXXBindTemporaryExpr *Binder =
@@ -1212,17 +1204,33 @@ Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
 /// \brief Checks that a type is suitable as the allocated type
 /// in a gcnew-expression. For this it has to be a managed type,
 /// (handle or value type).
-bool Sema::CheckCXXCLIAllocatedType(QualType AllocType, SourceLocation Loc,
-                              SourceRange R) {
-  unsigned Id = getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
-      "allocated object is not of managed type");
+bool Sema::CheckCLIGCNewType(QualType AllocType, QualType &InitType,
+                             SourceLocation Loc, SourceRange R) {
+  InitType = AllocType;
 
-  if (isa<CLIArrayType>(AllocType))
+  if (const HandleType *Handle = AllocType->getAs<HandleType>()) {
+    AllocType = Handle->getPointeeType();
+    InitType = AllocType;
+  }
+
+  if (const CLIArrayType *Array = AllocType->getAs<CLIArrayType>()) {
     return false;
+  }
 
   CXXRecordDecl *RD = AllocType->getAsCXXRecordDecl();
-  if (!RD || !RD->isCLIRecord())
+
+  if (const TemplateSpecializationType *TS = AllocType->getAs<
+    TemplateSpecializationType>()) {
+    TemplateDecl *TD = TS->getTemplateName().getAsTemplateDecl();
+    if (CXXRecordDecl *TRD = dyn_cast<CXXRecordDecl>(TD->getTemplatedDecl()))
+      RD = TRD;
+  }
+
+  if (!RD || !RD->isCLIRecord()) {
+    unsigned Id = getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+      "allocated object is not of managed type");
     return Diag(Loc, Id);
+  }
 
   if (!AllocType->isDependentType() &&
            RequireCompleteType(Loc, AllocType, diag::err_new_incomplete_type,R))
@@ -1230,6 +1238,11 @@ bool Sema::CheckCXXCLIAllocatedType(QualType AllocType, SourceLocation Loc,
   else if (RequireNonAbstractType(Loc, AllocType,
                                   diag::err_allocation_of_abstract_type))
     return true;
+
+
+  CXXConstructorDecl *CD = LookupDefaultConstructor(
+    AllocType->getAsCXXRecordDecl());
+
 
   return false;
 }

@@ -254,6 +254,74 @@ Exit:
   SkipUntil(tok::r_square, /*StopAtSemi=*/true, /*DontConsume=*/true);
 }
 
+/// \brief Parse a C++/CLI gcnew-expression.
+/// gcnew is used to allocate memory in a typesafe manner and call
+/// constructors. This method is called to parse the gcnew expression
+/// after the keyword has been parsed.
+/// 
+///        gcnew-expression:
+///                    'gcnew' type-specifier-seq   new-initializer[opt]
+///                                     array-init[opt]
+///
+///        new-initializer:
+///                   '(' expression-list[opt] ')'
+ExprResult Parser::ParseCLIGCNewExpression(SourceLocation Start) {
+  assert(Tok.is(tok::kw_gcnew) && "expected 'gcnew' token");
+  ConsumeToken();   // Consume 'gcnew'
+
+  DeclSpec DS(AttrFactory);
+  Declarator DeclaratorInfo(DS, Declarator::CXXCLIGCNewContext);
+  
+  if (ParseCXXTypeSpecifierSeq(DS))
+    DeclaratorInfo.setInvalidType(true);
+  else {
+    DeclaratorInfo.SetSourceRange(DS.getSourceRange());
+  }
+
+  //if (DS.hasTypeSpecifier()) {
+  //  DeclaratorInfo.setInvalidType(true);
+  //}
+ 
+  if (DeclaratorInfo.isInvalidType()) {
+    SkipUntil(tok::semi, /*StopAtSemi=*/true, /*DontConsume=*/true);
+    return ExprError();
+  }
+
+  ExprResult Initializer;
+
+  if (Tok.is(tok::l_paren)) {
+    SourceLocation ConstructorLParen, ConstructorRParen;
+    ExprVector ConstructorArgs;
+    BalancedDelimiterTracker T(*this, tok::l_paren);
+    T.consumeOpen();
+    ConstructorLParen = T.getOpenLocation();
+    if (Tok.isNot(tok::r_paren)) {
+      CommaLocsTy CommaLocs;
+      if (ParseExpressionList(ConstructorArgs, CommaLocs)) {
+        SkipUntil(tok::semi, /*StopAtSemi=*/true, /*DontConsume=*/true);
+        return ExprError();
+      }
+    }
+    T.consumeClose();
+    ConstructorRParen = T.getCloseLocation();
+    if (ConstructorRParen.isInvalid()) {
+      SkipUntil(tok::semi, /*StopAtSemi=*/true, /*DontConsume=*/true);
+      return ExprError();
+    }
+    Initializer = Actions.ActOnParenListExpr(ConstructorLParen,
+                                             ConstructorRParen,
+                                             ConstructorArgs);
+  } else if (Tok.is(tok::l_brace)) {
+    Diag(Tok.getLocation(),
+         diag::warn_cxx98_compat_generalized_initializer_lists);
+    Initializer = ParseBraceInitializer();
+  }
+  if (Initializer.isInvalid())
+    return Initializer;
+
+  return Actions.ActOnCXXCLIGCNew(Start, DeclaratorInfo, Initializer.take());
+}
+
 /// \brief Determine whether the given token is a C++/CLI virt-specifier.
 ///
 ///       virt-specifier:

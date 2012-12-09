@@ -2182,6 +2182,7 @@ private:
 
 public:
   void ParseCLIAttribute(ParsedAttributes &Attrs);
+  ExprResult ParseCLIGCNewExpression(SourceLocation Start);
   
   VirtSpecifiers::Specifier isCLIVirtSpecifier(const Token &Tok) const;
 

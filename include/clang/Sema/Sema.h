@@ -3787,8 +3787,8 @@ public:
                          TypeSourceInfo *AllocTypeInfo,
                          SourceRange DirectInitRange,
                          Expr *Initializer);
-  bool CheckCXXCLIAllocatedType(QualType AllocType, SourceLocation Loc,
-                          SourceRange R);
+  bool CheckCLIGCNewType(QualType AllocType, QualType &InitType,
+                         SourceLocation Loc, SourceRange R);
 
   ActionResult<CLICustomAttribute*> ActOnCLIAttribute(Scope *S,
                                           CLIAttributeTarget AttributeTarget,
