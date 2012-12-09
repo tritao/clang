@@ -25,6 +25,7 @@
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclLookups.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
@@ -2057,6 +2058,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::ObjCObjectPointer:
       Result.Namespaces.insert(Result.S.Context.getTranslationUnitDecl());
       break;
+
+    case Type::CLIArray:
+      T = cast<CLIArrayType>(T)->getElementType().getTypePtr();
+      continue;
 
     // Atomic types are just wrappers; use the associations of the
     // contained type.

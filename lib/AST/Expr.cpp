@@ -43,6 +43,11 @@ const CXXRecordDecl *Expr::getBestDynamicClassType() const {
   if (DerivedType->isDependentType())
     return NULL;
 
+  if (const CLIArrayType *ArrTy = DerivedType->getAs<CLIArrayType>()) {
+    Decl *D = ArrTy->getDecl();
+    return cast<CXXRecordDecl>(D);
+  }
+
   const RecordType *Ty = DerivedType->castAs<RecordType>();
   Decl *D = Ty->getDecl();
   return cast<CXXRecordDecl>(D);

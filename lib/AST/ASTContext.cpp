@@ -1398,6 +1398,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
   case Type::CLIArray:
+    return getTypeInfo(cast<CLIArrayType>(T)->getElementType().getTypePtr());
   case Type::Record:
   case Type::Enum: {
     const TagType *TT = cast<TagType>(T);
@@ -2184,6 +2185,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::SubstTemplateTypeParmPack:
   case Type::Auto:
   case Type::PackExpansion:
+  case Type::CLIArray:
     llvm_unreachable("type should never be variably-modified");
 
   // These types can be variably-modified but should never need to
@@ -3326,14 +3328,12 @@ QualType ASTContext::getObjCInterfaceType(const ObjCInterfaceDecl *Decl,
   return QualType(T, 0);
 }
 
-/// getObjCInterfaceType - Return the unique reference to the type for the
-/// specified ObjC interface decl. The list of protocols is optional.
+/// Return a C++/CLI managed array type.
 QualType ASTContext::getCLIArrayType(QualType ElementType,
                                      unsigned Dimensions,
                                      const RecordDecl *Decl) const {
   void *Mem = Allocate(sizeof(CLIArrayType), TypeAlignment);
   CLIArrayType *T = new (Mem) CLIArrayType(ElementType, Dimensions, Decl);
-  //Decl->TypeForDecl = T;
   Types.push_back(T);
   return QualType(T, 0);
 }

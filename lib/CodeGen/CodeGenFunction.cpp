@@ -85,6 +85,7 @@ bool CodeGenFunction::hasAggregateLLVMType(QualType type) {
   case Type::FunctionNoProto:
   case Type::Enum:
   case Type::ObjCObjectPointer:
+  case Type::CLIArray:
     return false;
 
   // Complexes, arrays, records, and Objective-C objects.
@@ -1113,6 +1114,10 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       type = vat->getElementType();
       break;
     }
+
+    case Type::CLIArray:
+      type = cast<CLIArrayType>(ty)->getElementType();
+      break;
 
     case Type::FunctionProto:
     case Type::FunctionNoProto:

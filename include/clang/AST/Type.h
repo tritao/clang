@@ -1597,6 +1597,9 @@ public:
   bool isNullPtrType() const;                   // C++0x nullptr_t
   bool isAtomicType() const;                    // C11 _Atomic()
 
+  // CLI tests
+  bool isCLIArrayType() const;
+
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
   /// than implicitly __strong.
@@ -4627,6 +4630,8 @@ class AtomicType : public Type, public llvm::FoldingSetNode {
   }
   static bool classof(const AtomicType *) { return true; }
 };
+
+#include "clang/AST/TypeCLI.h"
 
 /// A qualifier set is used to build a set of qualifiers.
 class QualifierCollector : public Qualifiers {

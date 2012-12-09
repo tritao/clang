@@ -41,6 +41,7 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/SemaFixItUtils.h"
 #include "clang/Sema/Template.h"
+#include "clang/Sema/SemaCLI.h"
 #include "TreeTransform.h"
 using namespace clang;
 using namespace sema;
@@ -3402,6 +3403,12 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
     BaseExpr = RHSExp;
     IndexExpr = LHSExp;
     ResultType = RHSTy->getAs<PointerType>()->getPointeeType();
+  } else if (LHSTy->isHandleType() &&
+             LHSTy->getPointeeType()->getAs<CLIArrayType>()) {
+    const CLIArrayType *ArrTy = LHSTy->getPointeeType()->getAs<CLIArrayType>();
+    BaseExpr = LHSExp;
+    IndexExpr = RHSExp;
+    ResultType = ArrTy->getElementType();
   } else {
     return ExprError(Diag(LLoc, diag::err_typecheck_subscript_value)
        << LHSExp->getSourceRange() << RHSExp->getSourceRange());

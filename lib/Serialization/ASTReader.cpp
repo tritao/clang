@@ -4180,6 +4180,13 @@ QualType ASTReader::readTypeRecord(unsigned Index) {
     return T;
   }
 
+  case TYPE_CLI_ARRAY: {
+    unsigned Idx = 0;
+    QualType PointeeType = readType(*Loc.F, Record, Idx);
+    // FIXME:
+    return Context.getCLIArrayType(PointeeType, 0, 0);
+  }
+
   case TYPE_ATOMIC: {
     if (Record.size() != 1) {
       Error("Incorrect encoding of atomic type");

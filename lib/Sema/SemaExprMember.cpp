@@ -837,7 +837,12 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     // Rederive where we looked up.
     DeclContext *DC = (SS.isSet()
                        ? computeDeclContext(SS, false)
-                       : BaseType->getAs<RecordType>()->getDecl());
+                       : 0);
+
+    if (const CLIArrayType *ArrTy = BaseType->getAs<CLIArrayType>())
+      DC = ArrTy->getDecl();
+    else
+      DC = BaseType->getAs<RecordType>()->getDecl();
 
     if (ExtraArgs) {
       ExprResult RetryExpr;
@@ -1108,7 +1113,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
   }
 
   // Handle field access to simple records.
-  if (const RecordType *RTy = BaseType->getAs<RecordType>()) {
+  if (const RecordType *RTy = BaseType->getAsRecordType()) {
     if (LookupMemberExprInRecord(*this, R, BaseExpr.get()->getSourceRange(),
                                  RTy, OpLoc, SS, HasTemplateArgs))
       return ExprError();
@@ -1125,6 +1130,18 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
                                                       OK_CLIProperty));
       }
     }
+
+    // Returning valid-but-null is how we indicate to the caller that
+    // the lookup result was filled in.
+    return Owned((Expr*) 0);
+  }
+
+  // Handle field access to CLI arrays.
+  if (const CLIArrayType *ArrTy = BaseType->getAs<CLIArrayType>()) {
+    if (LookupMemberExprInRecord(*this, R, BaseExpr.get()->getSourceRange(),
+                                 cast<RecordType>(ArrTy), OpLoc,
+                                 SS, HasTemplateArgs))
+      return ExprError();
 
     // Returning valid-but-null is how we indicate to the caller that
     // the lookup result was filled in.

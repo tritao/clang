@@ -474,6 +474,9 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     VTableName = "_ZTVN10__cxxabiv119__pointer_type_infoE";
     break;
 
+  case Type::CLIArray:
+    llvm_unreachable("Managed types shouldn't get here");
+
   case Type::MemberPointer:
     // abi::__pointer_to_member_type_info.
     VTableName = "_ZTVN10__cxxabiv129__pointer_to_member_type_infoE";
@@ -662,6 +665,10 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
 
   case Type::Atomic:
     // No fields, at least for the moment.
+    break;
+
+  case Type::CLIArray:
+    // No type information provided for C++/CLI types.
     break;
   }
 

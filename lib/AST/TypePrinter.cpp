@@ -188,6 +188,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::DependentTemplateSpecialization:
     case Type::ObjCObject:
     case Type::ObjCInterface:
+    case Type::CLIArray:
     case Type::Atomic:
       CanPrefixQualifiers = true;
       break;

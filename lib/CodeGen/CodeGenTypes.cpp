@@ -530,6 +530,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     break;
   }
 
+  case Type::CLIArray: {
+    llvm::Type *T = ConvertTypeForMem(cast<CLIArrayType>(Ty)->getElementType());
+    ResultType = llvm::ArrayType::get(T, 0);
+    break;
+  }
+
   case Type::Enum: {
     const EnumDecl *ED = cast<EnumType>(Ty)->getDecl();
     if (ED->isCompleteDefinition() || ED->isFixed())

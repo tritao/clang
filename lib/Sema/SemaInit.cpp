@@ -1493,14 +1493,12 @@ void InitListChecker::CheckCLIArrayType(const InitializedEntity &Entity,
   while (Index < IList->getNumInits()) {
     Expr *Init = IList->getInit(Index);
 
-    //InitializedEntity ElementEntity =
-    //  InitializedEntity::InitializeElement(SemaRef.Context, StructuredIndex,
-    //                                       Entity);
-    //// Check this element.
-    //CheckSubElementType(ElementEntity, IList, elementType, Index,
-    //                    StructuredList, StructuredIndex);
-
-    ++Index;
+    InitializedEntity ElementEntity =
+      InitializedEntity::InitializeElement(SemaRef.Context, StructuredIndex,
+                                           Entity);
+    // Check this element.
+    CheckSubElementType(ElementEntity, IList, elementType, Index,
+                        StructuredList, StructuredIndex);
   }
 }
 
@@ -2325,6 +2323,9 @@ InitializedEntity::InitializedEntity(ASTContext &Context, unsigned Index,
   } else if (const VectorType *VT = Parent.getType()->getAs<VectorType>()) {
     Kind = EK_VectorElement;
     Type = VT->getElementType();
+  } else if (const CLIArrayType *AT = Parent.getType()->getAs<CLIArrayType>()) {
+    Kind = EK_ArrayElement;
+    Type = AT->getElementType();
   } else {
     const ComplexType *CT = Parent.getType()->getAs<ComplexType>();
     assert(CT && "Unexpected type");

@@ -848,6 +848,7 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::ObjCObject:
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
+    case Type::CLIArray:
     case Type::Atomic:
       llvm_unreachable("type is illegal as a nested name specifier");
 

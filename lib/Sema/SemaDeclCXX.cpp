@@ -32,6 +32,7 @@
 #include "clang/AST/TypeOrdering.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/ParsedTemplate.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/SmallString.h"
@@ -1225,6 +1226,8 @@ static CXXRecordDecl *GetClassForType(QualType T) {
     return cast<CXXRecordDecl>(RT->getDecl());
   else if (const InjectedClassNameType *ICT = T->getAs<InjectedClassNameType>())
     return ICT->getDecl();
+  else if (const CLIArrayType *AT = T->getAs<CLIArrayType>())
+    return cast<CXXRecordDecl>(AT->getDecl());
   else
     return 0;
 }
