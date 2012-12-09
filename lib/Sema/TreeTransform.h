@@ -1337,6 +1337,25 @@ public:
                                           Sema::BFRK_Rebuild);
   }
 
+  /// \brief Build a new C++/CLI for each statement.
+  ///
+  /// By default, performs semantic analysis to build the new statement.
+  /// Subclasses may override this routine to provide different behavior.
+  StmtResult RebuildCLIForEachStmt(SourceLocation ForLoc,
+                                   SourceLocation EachLoc,
+                                   SourceLocation InLoc,
+                                   Stmt *Range, Stmt *BeginEnd,
+                                   Expr *Cond, Expr *Inc,
+                                   Stmt *LoopVar,
+                                   SourceLocation RParenLoc) {
+#if 0
+    return getSema().BuildCLIForEachStmt(ForLoc, EachLoc, InLoc, Range,
+                                         BeginEnd,
+                                         Cond, Inc, LoopVar, RParenLoc,
+                                         Sema::BFRK_Rebuild);
+#endif
+  }
+
   /// \brief Build a new C++0x range-based for statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
@@ -5979,6 +5998,12 @@ TreeTransform<Derived>::TransformCXXForRangeStmt(CXXForRangeStmt *S) {
     return SemaRef.Owned(S);
 
   return FinishCXXForRangeStmt(NewStmt.get(), Body.get());
+}
+
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformCLIForEachStmt(CLIForEachStmt *S) {
+  return S;
 }
 
 template<typename Derived>
