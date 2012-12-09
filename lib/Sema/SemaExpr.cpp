@@ -3636,10 +3636,14 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
     Call->setNumArgs(Context, NumArgsInProto);
   }
 
+  QualType CLIParamsType;
+  bool hasCLIParams = getLangOpts().CPlusPlusCLI && FDecl &&
+    HasCLIParamArrayAttribute(*this, FDecl, CLIParamsType);
+
   // If too many are passed and not variadic, error on the extras and drop
   // them.
   if (NumArgs > NumArgsInProto) {
-    if (!Proto->isVariadic()) {
+    if (!Proto->isVariadic() && !hasCLIParams) {
       if (NumArgsInProto == 1 && FDecl && FDecl->getParamDecl(0)->getDeclName())
         Diag(Args[NumArgsInProto]->getLocStart(),
              MinArgs == NumArgsInProto
@@ -3679,7 +3683,7 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
   unsigned TotalNumArgs = AllArgs.size();
   for (unsigned i = 0; i < TotalNumArgs; ++i)
     Call->setArg(i, AllArgs[i]);
-
+  Call->setNumArgs(Context, TotalNumArgs);
   return false;
 }
 
@@ -3694,9 +3698,18 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc,
   unsigned NumArgsInProto = Proto->getNumArgs();
   unsigned NumArgsToCheck = NumArgs;
   bool Invalid = false;
+
+  QualType CLIParamsType;
+  bool hasCLIParams = getLangOpts().CPlusPlusCLI && FDecl &&
+    HasCLIParamArrayAttribute(*this, FDecl, CLIParamsType);
+
   if (NumArgs != NumArgsInProto)
     // Use default arguments for missing arguments
     NumArgsToCheck = NumArgsInProto;
+
+  if (hasCLIParams && NumArgsToCheck)
+    --NumArgsToCheck;
+
   unsigned ArgIx = 0;
   // Continue to check argument types (even if we have too few/many args).
   for (unsigned i = FirstProtoArg; i != NumArgsToCheck; i++) {
@@ -3757,6 +3770,66 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc,
 
     AllArgs.push_back(Arg);
   }
+
+  if ((ArgIx < NumArgs) && FDecl && hasCLIParams) {
+    unsigned Params = FDecl->getNumParams();
+    ParmVarDecl *Param = FDecl->getParamDecl(--Params);
+    assert(Param && "Expected a valid parameter decl");
+    
+    QualType ProtoArgType = cast<CLIArrayType>(CLIParamsType->getAs<
+      HandleType>()->getPointeeType())->getElementType();
+
+    SmallVector<Expr *, 8> ParamsArgs;
+
+    for (unsigned i = ArgIx; i != NumArgs; ++i) {
+      Expr *Arg = Args[ArgIx++];
+
+      if (RequireCompleteType(Arg->getLocStart(),
+                              ProtoArgType,
+                              diag::err_call_incomplete_argument, Arg))
+        return true;
+
+      InitializedEntity Entity =
+        InitializedEntity::InitializeParameter(Context, ProtoArgType,
+                                               /*Consumed=*/false);
+
+      ExprResult ArgE = PerformCopyInitialization(Entity,
+                                                  SourceLocation(),
+                                                  Owned(Arg),
+                                                  /*TopLevelOfInitList=*/false,
+                                                  AllowExplicit);
+      if (ArgE.isInvalid())
+        return true;
+
+      Arg = ArgE.takeAs<Expr>();
+      ParamsArgs.push_back(Arg);
+    }
+
+    /// C++/CLI 14.6 Parameter array conversions
+    /// "If overload resolution selects one of the synthesized signatures, the
+    /// conversion sequences needed for each argument to satisfy the call is
+    /// performed. For the synthesized parameter array arguments, the compiler
+    /// constructs a CLI array of length n and initializes it with the converted
+    /// values. Then the function call is made with the constructed parameter
+    /// array."
+
+    // We need to get a fake location because else isExplicit() on the list 
+    // will return false and fail an assert later while checking.
+    SourceLocation Loc = getASTContext().getSourceManager().
+      getLocForEndOfFile(getASTContext().getSourceManager().getMainFileID());
+
+    ExprResult InitE = ActOnInitList(Loc, ParamsArgs, Loc);
+    InitListExpr *Init = InitE.takeAs<InitListExpr>();
+    assert(Init && "Expected a valid initializer list");
+    
+    ExprResult Arr = BuildCXXCLIGCNew(SourceLocation(), CLIParamsType,
+                                      Param->getTypeSourceInfo(), SourceRange(),
+                                      Init);
+    Invalid |= Arr.isInvalid();
+    AllArgs.push_back(Arr.takeAs<Expr>());
+
+    
+  } else
 
   // If this is a variadic call, handle args passed through "...".
   if (CallType != VariadicDoesNotApply) {
