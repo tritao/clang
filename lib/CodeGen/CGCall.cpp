@@ -21,6 +21,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/Attributes.h"
@@ -163,8 +164,15 @@ CodeGenTypes::arrangeCXXMethodType(const CXXRecordDecl *RD,
   // Add the 'this' pointer.
   argTypes.push_back(GetThisType(Context, RD));
 
-  return ::arrangeCXXMethodType(*this, argTypes,
+  const CGFunctionInfo &CGInfo = ::arrangeCXXMethodType(*this, argTypes,
               FTP->getCanonicalTypeUnqualified().getAs<FunctionProtoType>());
+
+  if (CLIDefinitionData *CLIData = RD->getCLIData()) {
+    const_cast<CGFunctionInfo&>(CGInfo).setEffectiveCallingConvention(
+      llvm::CallingConv::CIL_Instance);
+  }
+
+  return CGInfo;
 }
 
 /// Arrange the argument and result information for a declaration or
@@ -192,10 +200,16 @@ const CGFunctionInfo &
 CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
                                                CXXCtorType ctorKind) {
   SmallVector<CanQualType, 16> argTypes;
-  argTypes.push_back(GetThisType(Context, D->getParent()));
+
+  CLIDefinitionData *CLIData = D->getParent()->getCLIData();
+
+  if (!CLIData || CLIData->Type == CLI_RT_ValueType)
+    argTypes.push_back(GetThisType(Context, D->getParent()));
+
   CanQualType resultType = Context.VoidTy;
 
-  TheCXXABI.BuildConstructorSignature(D, ctorKind, resultType, argTypes);
+  if (!CLIData)
+    TheCXXABI.BuildConstructorSignature(D, ctorKind, resultType, argTypes);
 
   CanQual<FunctionProtoType> FTP = GetFormalType(D);
 
@@ -207,7 +221,16 @@ CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
 
   FunctionType::ExtInfo extInfo = FTP->getExtInfo();
   adjustCXXMethodInfo(*this, extInfo, FTP->isVariadic());
-  return arrangeLLVMFunctionInfo(resultType, argTypes, extInfo, required);
+
+  const CGFunctionInfo &CGInfo = arrangeLLVMFunctionInfo(resultType, argTypes,
+    extInfo, required);
+
+  if (CLIData) {
+    const_cast<CGFunctionInfo &>(CGInfo).setEffectiveCallingConvention(
+      llvm::CallingConv::CIL_NewObj);
+  }
+
+  return CGInfo;
 }
 
 /// Arrange the argument and result information for a declaration,
@@ -255,7 +278,19 @@ CodeGenTypes::arrangeFunctionDeclaration(const FunctionDecl *FD) {
   }
 
   assert(isa<FunctionProtoType>(FTy));
-  return arrangeFreeFunctionType(FTy.getAs<FunctionProtoType>());
+  const CGFunctionInfo& FI = arrangeFreeFunctionType(
+    FTy.getAs<FunctionProtoType>());
+
+  if (Context.getLangOpts().CPlusPlusCLI) {
+    if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
+      CXXRecordDecl *RD = const_cast<CXXRecordDecl *>(MD->getParent());
+      if (CLIDefinitionData *CLIData = RD->getCLIData())
+        const_cast<CGFunctionInfo&>(FI).setEffectiveCallingConvention(
+          llvm::CallingConv::CIL_Static);
+    }
+  }
+
+  return FI;
 }
 
 /// Arrange the argument and result information for the declaration or
@@ -360,8 +395,11 @@ CodeGenTypes::arrangeCXXMethodCall(const CallArgList &args,
 
   FunctionType::ExtInfo info = FPT->getExtInfo();
   adjustCXXMethodInfo(*this, info, FPT->isVariadic());
-  return arrangeLLVMFunctionInfo(GetReturnType(FPT->getResultType()),
+
+  const CGFunctionInfo &CGInfo =
+  /*return*/ arrangeLLVMFunctionInfo(GetReturnType(FPT->getResultType()),
                                  argTypes, info, required);
+  return CGInfo;
 }
 
 const CGFunctionInfo &
@@ -425,13 +463,19 @@ CodeGenTypes::arrangeLLVMFunctionInfo(CanQualType resultType,
   // them are direct or extend without a specified coerce type, specify the
   // default now.
   ABIArgInfo &retInfo = FI->getReturnInfo();
-  if (retInfo.canHaveCoerceToType() && retInfo.getCoerceToType() == 0)
+  if (retInfo.canHaveCoerceToType() && retInfo.getCoerceToType() == 0) {
     retInfo.setCoerceToType(ConvertType(FI->getReturnType()));
+    if (resultType->isUnsignedIntegerType())
+      retInfo.setUnsigned(true);
+  }
 
   for (CGFunctionInfo::arg_iterator I = FI->arg_begin(), E = FI->arg_end();
-       I != E; ++I)
+       I != E; ++I) {
     if (I->info.canHaveCoerceToType() && I->info.getCoerceToType() == 0)
       I->info.setCoerceToType(ConvertType(I->type));
+    if (I->type->isUnsignedIntegerType())
+      I->info.setUnsigned(true);
+  }
 
   bool erased = FunctionsBeingProcessed.erase(FI); (void)erased;
   assert(erased && "Not in set?");
@@ -834,6 +878,8 @@ CodeGenTypes::GetFunctionType(const CGFunctionInfo &FI) {
   SmallVector<llvm::Type*, 8> argTypes;
   llvm::Type *resultType = 0;
 
+  SmallVector<llvm::Value *, 4> Signedness;
+
   const ABIArgInfo &retAI = FI.getReturnInfo();
   switch (retAI.getKind()) {
   case ABIArgInfo::Expand:
@@ -860,9 +906,17 @@ CodeGenTypes::GetFunctionType(const CGFunctionInfo &FI) {
     break;
   }
 
+  Signedness.push_back(llvm::ConstantInt::get(
+    llvm::IntegerType::getInt32Ty(getLLVMContext()), !retAI.isUnsigned()));
+
   for (CGFunctionInfo::const_arg_iterator it = FI.arg_begin(),
          ie = FI.arg_end(); it != ie; ++it) {
     const ABIArgInfo &argAI = it->info;
+
+    if (argAI.getKind() != ABIArgInfo::Ignore) {
+      Signedness.push_back(llvm::ConstantInt::get(
+        llvm::IntegerType::getInt32Ty(getLLVMContext()), !argAI.isUnsigned()));
+    }
 
     switch (argAI.getKind()) {
     case ABIArgInfo::Ignore:
@@ -902,7 +956,15 @@ CodeGenTypes::GetFunctionType(const CGFunctionInfo &FI) {
   bool Erased = FunctionsBeingProcessed.erase(&FI); (void)Erased;
   assert(Erased && "Not in set?");
   
-  return llvm::FunctionType::get(resultType, argTypes, FI.isVariadic());
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(resultType, argTypes, FI.isVariadic());
+  
+  if (CGM.getLangOpts().CPlusPlusCLI && !Signedness.empty()) {
+    llvm::MDNode *MD = llvm::MDNode::get(getLLVMContext(), Signedness);
+    FTy->setMetadata("cil.signedness", MD);
+  }
+
+  return FTy;
 }
 
 llvm::Type *CodeGenTypes::GetFunctionTypeForVTable(GlobalDecl GD) {
@@ -1913,6 +1975,36 @@ void CodeGenFunction::ExpandTypeToArgs(QualType Ty, RValue RV,
   }
 }
 
+static void ComputeCLIMethodMetadata(CodeGenModule &CGM,
+                                     llvm::Instruction *CI,
+                                     llvm::FunctionType *FTy,
+                                     const CXXMethodDecl *MD) {
+  const CXXRecordDecl *RD = MD->getParent();
+  if (!RD->isCLIRecord()) return;
+
+  CLIDefinitionData *CLIData = RD->getCLIData();
+  if (!CLIData || !CLIData->isGeneric())
+    return;
+
+  llvm::SmallVector<llvm::Value *, 4> GenericParams;
+
+  GenericParams.push_back(llvm::ConstantInt::get(
+    llvm::IntegerType::getInt32Ty(CGM.getLLVMContext()),
+    MD->getCLIData()->getReturnTemplateParamIndex()));
+  
+  for (unsigned i = 0, e = MD->getNumParams(); i != e; ++i) {
+    const ParmVarDecl *Param = MD->getParamDecl(i);
+    unsigned Index = Param->getTemplateParamIndex();
+    GenericParams.push_back(llvm::ConstantInt::get(
+      llvm::IntegerType::getInt32Ty(CGM.getLLVMContext()), Index));
+  }
+
+  //assert(GenericParams.size() == FTy->getNumParams() + 1);
+
+  llvm::MDNode *Node = llvm::MDNode::get(CGM.getLLVMContext(),
+    GenericParams);
+  CI->setMetadata("cil.params", Node);
+}
 
 RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
                                  llvm::Value *Callee,
@@ -2168,6 +2260,13 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   llvm::Instruction *CI = CS.getInstruction();
   if (Builder.isNamePreserving() && !CI->getType()->isVoidTy())
     CI->setName("call");
+
+  if (getLangOpts().CPlusPlusCLI) {
+    if (const CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(TargetDecl)) {
+      if (MD->getParent()->isCLIRecord())
+        ComputeCLIMethodMetadata(CGM, CI, IRFuncTy, MD);
+    }
+  }
 
   // Emit any writebacks immediately.  Arguably this should happen
   // after any return-value munging.

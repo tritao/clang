@@ -425,8 +425,15 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
   PrologueCleanupDepth = EHStack.stable_begin();
   EmitFunctionProlog(*CurFnInfo, CurFn, Args);
 
+  CLIDefinitionData *CLIData = 0;
+  if (const CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(D)) {
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(MD->getParent());
+    CLIData = RD->getCLIData();
+  }
+
   if (D && isa<CXXMethodDecl>(D) && cast<CXXMethodDecl>(D)->isInstance()) {
-    CGM.getCXXABI().EmitInstanceFunctionProlog(*this);
+    if (!CLIData)
+      CGM.getCXXABI().EmitInstanceFunctionProlog(*this);
     const CXXMethodDecl *MD = cast<CXXMethodDecl>(D);
     if (MD->getParent()->isLambda() &&
         MD->getOverloadedOperator() == OO_Call) {
@@ -502,9 +509,16 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   FunctionArgList Args;
   QualType ResTy = FD->getResultType();
 
+  CLIDefinitionData *CLIData = 0;
+  if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(MD->getParent());
+    CLIData = RD->getCLIData();
+  }
+
   CurGD = GD;
   if (isa<CXXMethodDecl>(FD) && cast<CXXMethodDecl>(FD)->isInstance())
-    CGM.getCXXABI().BuildInstanceFunctionParams(*this, ResTy, Args);
+    if (!CLIData)
+      CGM.getCXXABI().BuildInstanceFunctionParams(*this, ResTy, Args);
 
   for (unsigned i = 0, e = FD->getNumParams(); i != e; ++i)
     Args.push_back(FD->getParamDecl(i));

@@ -57,8 +57,15 @@ RValue CodeGenFunction::EmitCXXMemberCall(const CXXMethodDecl *MD,
   // And the rest of the call args.
   EmitCallArgs(Args, FPT, ArgBeg, ArgEnd);
 
-  return EmitCall(CGM.getTypes().arrangeCXXMethodCall(Args, FPT, required),
-                  Callee, ReturnValue, Args, MD);
+  const CGFunctionInfo &CGInfo = 
+    CGM.getTypes().arrangeCXXMethodCall(Args, FPT, required);
+
+  if (CLIDefinitionData *CLIData = MD->getParent()->getCLIData()) {
+    const_cast<CGFunctionInfo&>(CGInfo).setEffectiveCallingConvention(
+      llvm::CallingConv::CIL_Instance);
+  }
+
+  return EmitCall(CGInfo, Callee, ReturnValue, Args, MD);
 }
 
 // FIXME: Ideally Expr::IgnoreParenNoopCasts should do this, but it doesn't do

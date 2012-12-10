@@ -26,6 +26,7 @@
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/RecordLayout.h"
@@ -371,6 +372,98 @@ void CodeGenModule::setTypeVisibility(llvm::GlobalValue *GV,
   GV->setUnnamedAddr(true);
 }
 
+static std::string getCLIRecordFullName(const CXXRecordDecl *RD) {
+  CLIDefinitionData *Data = RD->getCLIData();
+  assert(Data && "Expected valid C++/CLI record data");
+
+  // User-defined types do not have their full name computed before it
+  // is needed, so compute it before continuing.
+  if (Data->FullName.empty()) {
+    Data->FullName = RD->getQualifiedNameAsString();
+  }
+
+  return Data->FullName;
+}
+
+std::string CodeGenModule::getCLIRecordIRName(const CXXRecordDecl *RD) {
+  // C++/CLI names are not mangled in the usual sense.
+  CLIDefinitionData *Data = RD->getCLIData();
+  assert(Data && "Expected valid C++/CLI record data");
+
+  if (!Data->IRName.empty())
+    return Data->IRName;
+
+  // Calculate a unique name for this record.
+  std::string S;
+  llvm::raw_string_ostream Out(S);
+
+  if (!Data->AssemblyName.empty()) {
+    Out << "[" << Data->AssemblyName << "]";
+  }
+
+  Out << getCLIRecordFullName(RD);
+
+  static unsigned NameMangle = 0;
+  Out << "[" << NameMangle++ << "]";
+
+  // Cache it for later re-use.
+  Data->IRName = Out.str();
+
+  return Data->IRName;
+}
+
+static bool getCLIName(CodeGenModule &M,
+                       GlobalDecl GD, llvm::raw_svector_ostream &Out) {
+  const NamedDecl *ND = cast<NamedDecl>(GD.getDecl());
+
+  const CXXRecordDecl* RD = 0;
+  if (const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
+    RD = dyn_cast<CXXRecordDecl>(VD->getDeclContext());
+  } else if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(ND)) {
+    RD = MD->getParent();
+  }
+
+  if (!RD || !RD->isCLIRecord())
+    return false;
+
+  std::string IRName = M.getCLIRecordIRName(RD);
+
+  std::string Name;
+  DeclarationName DN = ND->getDeclName();
+
+  switch (DN.getNameKind()) {
+  default:
+    break;
+  case DeclarationName::Identifier:
+    Name = ND->getName();
+    break;
+  case DeclarationName::CXXOperatorName:
+    if (DN.getCXXOverloadedOperator() == OO_EqualEqual)
+      Name = "op_Equality";
+    else if (DN.getCXXOverloadedOperator() == OO_ExclaimEqual)
+      Name = "op_Inequality";
+  case DeclarationName::CXXConstructorName:
+    Name = ".ctor";
+    break;
+  case DeclarationName::CXXDestructorName:
+    break;
+  }
+
+  if (Name.empty())
+    Name = DN.getAsString();
+
+  Out << IRName << "::" << Name;
+
+  // Since LLVM does not support overloaded names in types, we need to
+  // add some mangling at the end to make the names unique. This will
+  // then be removed in the backend.
+
+  static unsigned NameMangle = 0;
+  Out << "[" << NameMangle++ << "]";
+
+  return true;
+}
+
 StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
   const NamedDecl *ND = cast<NamedDecl>(GD.getDecl());
 
@@ -388,7 +481,10 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
   
   SmallString<256> Buffer;
   llvm::raw_svector_ostream Out(Buffer);
-  if (const CXXConstructorDecl *D = dyn_cast<CXXConstructorDecl>(ND))
+
+  if (getCLIName(*this, GD, Out))
+    ;
+  else if (const CXXConstructorDecl *D = dyn_cast<CXXConstructorDecl>(ND))
     getCXXABI().getMangleContext().mangleCXXCtor(D, GD.getCtorType(), Out);
   else if (const CXXDestructorDecl *D = dyn_cast<CXXDestructorDecl>(ND))
     getCXXABI().getMangleContext().mangleCXXDtor(D, GD.getDtorType(), Out);

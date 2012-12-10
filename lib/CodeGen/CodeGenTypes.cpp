@@ -54,6 +54,13 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
                                      StringRef suffix) {
   SmallString<256> TypeName;
   llvm::raw_svector_ostream OS(TypeName);
+
+  CLIDefinitionData *CLIData = 0;
+  if (const CXXRecordDecl *CRD = dyn_cast<CXXRecordDecl>(RD)) {
+    OS << CGM.getCLIRecordIRName(CRD);
+    goto PastName;
+  }
+
   OS << RD->getKindName() << '.';
   
   // Name the codegen type after the typedef name
@@ -74,6 +81,8 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
       TDD->printName(OS);
   } else
     OS << "anon";
+
+PastName:
 
   if (!suffix.empty())
     OS << suffix;
@@ -592,6 +601,39 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   return ResultType;
 }
 
+void CodeGenTypes::ComputeCLIRecordTypeMetadata(llvm::Type *Ty,
+                                                const CXXRecordDecl *RD) {
+  CLIDefinitionData *CLIData = RD->getCLIData();
+  assert(CLIData && "Expected a C++/CLI record");
+  
+  llvm::MDString *Str = 0;
+  if (CLIData->Type == CLI_RT_ValueType) {
+    Str = llvm::MDString::get(getLLVMContext(), "value");
+  } else if (CLIData->Type == CLI_RT_ReferenceType) {
+    Str = llvm::MDString::get(getLLVMContext(), "ref");
+  }
+  
+  Ty->setMetadata("cil.type", llvm::MDNode::get(getLLVMContext(), Str));
+
+  CLIGenericData *GenericData = CLIData->getGenericData();
+  if (!GenericData) return;
+
+  llvm::SmallVector<llvm::Value *, 1> Types;
+
+  if (const ClassTemplateSpecializationDecl *TD
+                          = dyn_cast<ClassTemplateSpecializationDecl>(RD)) {
+    const TemplateArgumentList &TAL = TD->getTemplateArgs();
+    for (unsigned I = 0, E = TAL.size(); I != E; ++I) {
+      const TemplateArgument &Arg = TAL[I];
+      llvm::Type *ArgTy = ConvertType(Arg.getAsType());
+      llvm::Value *Value = llvm::ConstantPointerNull::get(ArgTy->getPointerTo());
+      Types.push_back(Value);
+    }
+  }
+
+  Ty->setMetadata("cil.generic", llvm::MDNode::get(getLLVMContext(), Types));
+}
+
 /// ConvertRecordDeclType - Lay out a tagged decl type like struct or union.
 llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD) {
   // TagDecl's are not necessarily unique, instead use the (clang)
@@ -606,6 +648,13 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD) {
     addRecordTypeName(RD, Entry, "");
   }
   llvm::StructType *Ty = Entry;
+
+  if (const CXXRecordDecl *CRD = dyn_cast<CXXRecordDecl>(RD)) {
+    if (CLIDefinitionData *CLIData = CRD->getCLIData()) {
+      ComputeCLIRecordTypeMetadata(Ty, CRD);
+      return Ty;
+    }
+  }
 
   // If this is still a forward declaration, or the LLVM type is already
   // complete, there's nothing more to do.

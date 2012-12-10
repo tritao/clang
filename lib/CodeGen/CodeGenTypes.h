@@ -216,6 +216,10 @@ public:
                                                 FunctionType::ExtInfo info,
                                                 RequiredArgs args);
 
+  /// \brief Computes C++/CLI LLVM type metadata.
+  void ComputeCLIRecordTypeMetadata(llvm::Type *Ty,
+                                    const CXXRecordDecl *RD);
+
   /// \brief Compute a new LLVM record layout object for the given record.
   CGRecordLayout *ComputeRecordLayout(const RecordDecl *D,
                                       llvm::StructType *Ty);

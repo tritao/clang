@@ -75,11 +75,12 @@ namespace clang {
     bool BoolData0;
     bool BoolData1;
     bool InReg;
+    bool IsUnsigned;
 
     ABIArgInfo(Kind K, llvm::Type *TD, unsigned UI, bool B0, bool B1, bool IR,
                llvm::Type* P)
       : TheKind(K), TypeData(TD), PaddingType(P), UIntData(UI), BoolData0(B0),
-        BoolData1(B1), InReg(IR) {}
+        BoolData1(B1), InReg(IR), IsUnsigned(0) {}
 
   public:
     ABIArgInfo() : TheKind(Direct), TypeData(0), UIntData(0) {}
@@ -162,6 +163,14 @@ namespace clang {
     bool getIndirectRealign() const {
       assert(TheKind == Indirect && "Invalid kind!");
       return BoolData1;
+    }
+
+    bool isUnsigned() const {
+      return IsUnsigned;
+    }
+
+    void setUnsigned(bool V) {
+      IsUnsigned = V;
     }
 
     void dump() const;
