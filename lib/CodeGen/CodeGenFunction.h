@@ -2626,10 +2626,12 @@ private:
             }
           }
         }
+#if 0
         assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
                getTypePtr() ==
                getContext().getCanonicalType(ActualArgType).getTypePtr() &&
                "type mismatch in call argument!");
+#endif
 #endif
         EmitCallArg(Args, *Arg, ArgType);
       }
