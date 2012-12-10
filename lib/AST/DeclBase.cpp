@@ -473,6 +473,8 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case NonTypeTemplateParm:
     case ObjCMethod:
     case ObjCProperty:
+    case CLIProperty:
+    case CLIEvent:
       return IDNS_Ordinary;
     case Label:
       return IDNS_Label;
@@ -505,7 +507,6 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case Field:
     case ObjCAtDefsField:
     case ObjCIvar:
-    case CLIProperty:
       return IDNS_Member;
 
     case Record:
