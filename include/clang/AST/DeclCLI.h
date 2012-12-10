@@ -56,6 +56,27 @@ public:
   friend class ASTDeclWriter;
 };
 
+/// CLIEventDecl - Represent a C++/CLI event.
+class CLIEventDecl : public ValueDecl {
+  virtual void anchor() LLVM_OVERRIDE;
+
+  CLIEventDecl(DeclContext *DC, DeclarationName DN, QualType Ty);
+  
+public:
+  static CLIEventDecl *Create(ASTContext &C, DeclContext *DC,
+      DeclarationName DN, QualType Ty);
+
+  static CLIEventDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+
+  // Implement isa/cast/dyncast/etc.
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classof(const CLIEventDecl *D) { return true; }
+  static bool classofKind(Kind K) { return K == CLIEvent; }
+
+  friend class ASTDeclReader;
+  friend class ASTDeclWriter;
+};
+
 typedef CXXRecordDecl CLIRecordDecl;
 
 enum CLIGenericConstraintFlags {
