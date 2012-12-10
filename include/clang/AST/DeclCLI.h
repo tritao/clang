@@ -152,6 +152,63 @@ public:
   }
 };
 
+enum CLIAttributeTarget {
+  CLI_AT_none,
+  CLI_AT_assembly,
+  CLI_AT_class,
+  CLI_AT_constructor,
+  CLI_AT_delegate,
+  CLI_AT_enum,
+  CLI_AT_event,
+  CLI_AT_field,
+  CLI_AT_interface,
+  CLI_AT_method,
+  CLI_AT_parameter,
+  CLI_AT_property,
+  CLI_AT_returnvalue,
+  CLI_AT_struct
+};
+
+/// C++/CLI 29.2 Attribute specification
+/// 
+/// \brief Attribute specification is the application of a previously
+/// defined attribute to a declaration. An attribute is a piece of
+/// additional declarative information that is specified for a declaration.
+class CLICustomAttribute : public Attr {
+public:
+  struct Argument {
+    std::string Name;
+    int16_t Position;
+    Expr *Expression;
+    Argument() : Position(-1), Expression(0) {}
+
+    bool isNamed() { return !Name.empty(); }
+    bool isPositional() { return Position != -1; }
+  };
+
+  CXXRecordDecl *Class;
+  CXXMethodDecl *Ctor;
+  SmallVector<Argument, 4> Arguments;
+
+public:
+  CLICustomAttribute(SourceRange R, ASTContext &Ctx,
+    CXXRecordDecl *Attribute, CXXMethodDecl *Ctor)
+    : Attr(attr::CLICustomAttribute, R),
+      Class(Attribute), Ctor(Ctor) {
+  }
+
+  CLICustomAttribute *clone (ASTContext &C) const LLVM_OVERRIDE;
+  void printPretty(llvm::raw_ostream &OS, const PrintingPolicy &Policy)
+    const LLVM_OVERRIDE;
+
+  bool isLateParsed() const LLVM_OVERRIDE { return 0; }
+
+  static bool classof(const Attr *A) {
+    return A->getKind() == attr::CLICustomAttribute;
+  }
+  static bool classof(const AliasAttr *) { return true; }
+};
+
 } // end namespace clang
 
 #endif

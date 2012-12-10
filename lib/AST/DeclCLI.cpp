@@ -48,3 +48,11 @@ CLIPropertyDecl *CLIPropertyDecl::CreateDeserialized(ASTContext &C, unsigned ID)
   void *Mem = AllocateDeserializedDecl(C, ID, sizeof(CLIPropertyDecl));
   return new (Mem) CLIPropertyDecl(0, DeclarationName(), QualType());
 }
+
+CLICustomAttribute *CLICustomAttribute::clone(ASTContext &C) const {
+  return new(C) CLICustomAttribute(SourceRange(), C, Class, Ctor);
+}
+
+void CLICustomAttribute::printPretty(llvm::raw_ostream &OS,
+                                     const PrintingPolicy &Policy) const {
+}
