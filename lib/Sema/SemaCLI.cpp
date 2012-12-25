@@ -1086,4 +1086,99 @@ static bool isCLIStringLiteralConversion(Expr *From, QualType ToType) {
   return false;
 }
 
+static QualType ConvertBuiltinTypeToCLIPrimitiveType(Sema &S,
+                                        const BuiltinType *Builtin) {
+  CLISemaContext *Ctx = S.getCLIContext();
+  CLIPrimitiveTypes &Tys = Ctx->Types;
+  
+  // 8.2.1 Fundamental types and the CLI
+  switch (Builtin->getKind()) {
+  case BuiltinType::Bool: return Tys.Boolean.Ty;
+  case BuiltinType::SChar: return Tys.SByte.Ty;
+  case BuiltinType::UChar: return Tys.Byte.Ty;
+  case BuiltinType::Char_S: return Tys.SByte.Ty;
+  case BuiltinType::Char_U: return Tys.SByte.Ty;
+  case BuiltinType::Short: return Tys.Int16.Ty;
+  case BuiltinType::UShort: return Tys.UInt16.Ty;
+  case BuiltinType::Int: return Tys.Int32.Ty;
+  case BuiltinType::UInt: return Tys.UInt32.Ty;
+  case BuiltinType::Long: return Tys.Int32.Ty;
+  case BuiltinType::ULong: return Tys.UInt32.Ty;
+  case BuiltinType::LongLong: return Tys.Int64.Ty;
+  case BuiltinType::ULongLong: return Tys.UInt64.Ty;
+  case BuiltinType::Float: return Tys.Single.Ty;
+  case BuiltinType::Double: return Tys.Double.Ty;
+  case BuiltinType::LongDouble: return Tys.Double.Ty;
+  case BuiltinType::WChar_S: return Tys.Char.Ty;
+  case BuiltinType::WChar_U: return Tys.Char.Ty;
+  default: return QualType();
+  }
+
+  return QualType();
+}
+
+/// IsBoxingConversion - Determines whether the conversion from
+/// FromType to ToType is a boxing conversion (C++/CLI 14.2.6).
+bool IsBoxingConversion(Sema &S, QualType FromType, QualType ToType,
+                        QualType &ConvertedType) {
+  // "A boxing conversion involves the creation of a new object on the
+  // CLI heap. A boxing conversion shall be applied only to instances of
+  // value types, with the exception of pointers. For any given value
+  // type V, the conversion results in a V^."
+  if (!ToType->isHandleType())
+    return false;
+
+  CXXRecordDecl *RD = ToType->getPointeeType()->getAsCXXRecordDecl();
+  if (!RD | !RD->isCLIRecord())
+    return false;
+
+  // Value Types: Fundamental Type, Enum, Pointer (not considered for
+  // boxing purposes), Value Class
+  if (const BuiltinType *FromBuiltin = FromType->getAs<BuiltinType>()) {
+    QualType Ty = ConvertBuiltinTypeToCLIPrimitiveType(S, FromBuiltin);
+    if (Ty.isNull())
+      return false;
+    ConvertedType = Ty;
+    // Value types are not initialized as handles
+    ConvertedType = S.getASTContext().getHandleType(ConvertedType);
+  } else if (const RecordType *FromRecord = FromType->getAs<RecordType>()) {
+    const CXXRecordDecl *FRD = FromRecord->getAsCXXRecordDecl();
+    if (!FRD->isCLIRecord())
+      return false;
+    if (FRD->getCLIData()->Type != CLI_RT_ValueType)
+      return false;
+    CXXBasePaths P;
+    if (!S.Context.hasSameType(ToType->getPointeeType(), FromType) &&
+        !FRD->isDerivedFrom(RD, P))
+      return false;
+    ConvertedType = ToType;
+  } else if (const EnumType *FromEnum = FromType->getAs<EnumType>()) {
+    llvm_unreachable("Enum boxing conversions not implemented yet");
+  } else {
+    return false;
+  }
+
+  assert(!ConvertedType.isNull());
+  if (RD == S.getCLIContext()->Types.Object.Decl)
+    ConvertedType = S.getCLIContext()->Types.Object.Ty;
+
+  return true;
+}
+
+// Used in SemaExprCXX.cpp
+QualType GetBoxingConversionValueType(Sema &S, QualType FromType) {
+  if (const BuiltinType *FromBuiltin = FromType->getAs<BuiltinType>()) {
+    QualType Ty = ConvertBuiltinTypeToCLIPrimitiveType(S, FromBuiltin);
+    assert(!Ty.isNull());
+    return Ty;
+  } else if (const RecordType *FromRecord = FromType->getAs<RecordType>()) {
+    return FromType;
+  //} else if (const EnumType *FromEnum = FromType->getAs<EnumType>()) {
+  } else {
+    assert(0 && "Expected a valid fundamental type");
+  }
+
+  return QualType();
+}
+
 } // end namespace clang
