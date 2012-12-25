@@ -1181,4 +1181,33 @@ QualType GetBoxingConversionValueType(Sema &S, QualType FromType) {
   return QualType();
 }
 
+/// CheckHandleConversion - Check the handle conversion from the
+/// expression From to the type ToType. This routine checks for
+/// ambiguous or inaccessible derived-to-base handle
+/// conversions for which IsHandleConversion has already returned
+/// true. It returns true and produces a diagnostic if there was an
+/// error, or returns false otherwise.
+bool Sema::CheckHandleConversion(Expr *From, QualType ToType,
+                                 CastKind &Kind,
+                                 CXXCastPath &BasePath,
+                                 bool IgnoreBaseAccess) {
+  QualType FromType = From->getType();
+
+  if (FromType->isHandleType()) {
+    // The conversion was successful.
+    // FIXME: Check for accessibility
+    Kind = CK_CLI_DerivedToBaseHandle;
+    return false;
+  }
+
+  // We shouldn't fall into this case unless it's valid for other
+  // reasons.
+  if (From->isNullPointerConstant(Context, Expr::NPC_ValueDependentIsNull)) {
+    Kind = CK_CLI_NullToHandle;
+    return false;
+  }
+
+  return true;
+}
+
 } // end namespace clang
