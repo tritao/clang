@@ -1059,4 +1059,31 @@ static const CLIRecordDecl * getCLIRecordDeclForHandleType(QualType T) {
   return 0;
 }
 
+#pragma unmanaged
+
+/// Helper function to determine whether this is C++/CLI string literal
+/// conversion to a System::String^. (C++/CLI 14.2.5 String literal conversions)
+static bool isCLIStringLiteralConversion(Expr *From, QualType ToType) {
+  // Look inside the implicit cast, if it exists.
+  if (ImplicitCastExpr *Cast = dyn_cast<ImplicitCastExpr>(From))
+    From = Cast->getSubExpr();
+
+  StringLiteral *StrLit = dyn_cast<StringLiteral>(From->IgnoreParens());
+  if (!StrLit) return false;
+
+  const CLIRecordDecl * RD = getCLIRecordDeclForHandleType(ToType);
+  if (!RD) return false;
+
+  switch (StrLit->getKind()) {
+    case StringLiteral::UTF8:
+    case StringLiteral::UTF16:
+    case StringLiteral::UTF32:
+    case StringLiteral::Ascii:
+    case StringLiteral::Wide:
+      return true;
+  }
+
+  return false;
+}
+
 } // end namespace clang
