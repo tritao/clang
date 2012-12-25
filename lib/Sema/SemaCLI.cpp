@@ -1210,4 +1210,85 @@ bool Sema::CheckHandleConversion(Expr *From, QualType ToType,
   return true;
 }
 
+ActionResult<CLICustomAttribute*> Sema::ActOnCLIAttribute(Scope *S,
+                                              CLIAttributeTarget Target,
+                                                  SourceLocation TargetLoc,
+                                                       StringRef AttributeName,
+                                                    MultiExprArg AttrArgs) {
+  bool isFileScope = S->GetDecls().size() == 1 && S->GetDecls().count(
+    Context.getTranslationUnitDecl());
+
+  //if (Target == CLI_AT_assembly && !isFileScope) {
+  //  Diag(TargetLoc, Diags.getCustomDiagID(DiagnosticsEngine::Warning,
+  //    "assembly attribute can only be used at file-scope"));
+  //  return true;
+  //}
+
+  DeclarationNameInfo DeclName(PP.getIdentifierInfo(AttributeName),
+    SourceLocation());
+
+  LookupResult Res(*this, DeclName, LookupTagName);
+  if (!LookupName(Res, S)) {
+    // If the lookup failed the first time, try again with "Attribute" added
+    // to the end of the name.
+    DeclName.setName(PP.getIdentifierInfo(AttributeName.str()+"Attribute"));
+    Res.setLookupNameInfo(DeclName);
+    LookupName(Res, S);
+  }
+  
+  LookupResult::LookupResultKind Kind = Res.getResultKind();
+  if (Kind != LookupResult::Found) {
+    return true;
+  }
+
+  CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(Res.getFoundDecl());
+
+  if (!RD || !RD->isCLIRecord()) {
+    Diag(TargetLoc, Diags.getCustomDiagID(DiagnosticsEngine::Error,
+      "attribute class is invalid"));
+    return true;
+  }
+
+  CLICustomAttribute *Attr = new (Context) CLICustomAttribute(
+    SourceRange(), Context, RD, /*FIXME: Ctor*/0);
+
+  return Attr;
+}
+
+bool HasCLIParamArrayAttribute(Sema &S, FunctionDecl *FD, QualType &ParamType) {
+  unsigned Params = FD->getNumParams();
+  if (!Params)
+    return false;
+
+  ParmVarDecl *PD = FD->getParamDecl(--Params);
+  assert(PD && "Expected a valid parameter decl");
+
+  for (specific_attr_iterator<CLICustomAttribute> it = PD->specific_attr_begin<
+    CLICustomAttribute>(); it != PD->specific_attr_end<CLICustomAttribute>();
+    ++it) {
+    CLICustomAttribute *CLIAttr = *it;
+    if (CLIAttr->Class == S.getCLIContext()->ParamArrayAttribute) {
+      assert(isa<HandleType>(PD->getType()));
+      ParamType = PD->getType();
+      return true;
+    }
+  }
+
+  return false;
+}
+
+Attr *Sema::InstantiateUnknownAttr(const Attr *At,
+                       const MultiLevelTemplateArgumentList &TemplateArgs) {
+  switch (At->getKind()) {
+    default: return 0;
+    case attr::CLICustomAttribute: {
+      const CLICustomAttribute *A = cast<CLICustomAttribute>(At);
+      return A->clone(Context);
+    }
+  }
+
+  return 0;
+}
+
+
 } // end namespace clang
