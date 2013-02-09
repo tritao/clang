@@ -65,9 +65,12 @@ static NamespaceDecl *findCreateNamespace(Sema &S, DeclContext *DC,
   return NS;
 }
 
-static NamespaceDecl *findCreateNamespaces(Sema &S, StringRef Namespace) {
+static DeclContext *findCreateNamespaces(Sema &S, StringRef Namespace) {
   TranslationUnitDecl* TU = S.getASTContext().getTranslationUnitDecl();
   DeclContext* DC = TU->getPrimaryContext();
+
+  if (Namespace.size() == 0)
+      return DC;
 
   llvm::SmallVector<StringRef, 4> Namespaces;
   llvm::SplitString(Namespace, Namespaces, ".");
@@ -82,12 +85,12 @@ static NamespaceDecl *findCreateNamespaces(Sema &S, StringRef Namespace) {
   return NS;
 }
 
-static NamespaceDecl *findCreateNamespaces(Sema &S, TypeReference ^Type) {
+static DeclContext *findCreateNamespaces(Sema &S, TypeReference ^Type) {
   std::string Namespace = marshalString<E_UTF8>(Type->Namespace);
   return findCreateNamespaces(S, Namespace);
 }
 
-static NamespaceDecl* findCreateNamespaces(Sema &S, TypeDefinition ^Type) {
+static DeclContext* findCreateNamespaces(Sema &S, TypeDefinition ^Type) {
   std::string Namespace = marshalString<E_UTF8>(Type->Namespace);
   return findCreateNamespaces(S, Namespace);
 }
@@ -367,7 +370,7 @@ static ClassTemplateDecl *GetCLIClassTemplate(Sema &S, TypeDefinition^ TypeDef,
     reinterpret_cast<NamedDecl**>(Params.data()), Params.size(),
     SourceLocation());
 
-  NamespaceDecl *NS = findCreateNamespaces(S, TypeDef);
+  DeclContext *NS = findCreateNamespaces(S, TypeDef);
   ClassTemplateDecl *TD = ClassTemplateDecl::Create(C, NS, SourceLocation(),
     &II, TPL, RD, /*PrevDecl=*/0);
   RD->setDescribedClassTemplate(TD);
@@ -386,7 +389,7 @@ static CLIRecordDecl * createClass(Sema &S, TypeDefinition^ TypeDef) {
   IdentifierTable &IdentTable = S.getPreprocessor().getIdentifierTable();
   IdentifierInfo &II = IdentTable.get(Name);
 
-  NamespaceDecl *NS = findCreateNamespaces(S, TypeDef);
+  DeclContext *NS = findCreateNamespaces(S, TypeDef);
   if (!NS) return nullptr;
 
   CLIRecordDecl *RD = CLIRecordDecl::Create(C, TTK_RefClass, NS, SourceLocation(),
@@ -622,7 +625,7 @@ static void createClassDecls(Sema &S, TypeDefinition ^TypeDef, CXXRecordDecl *RD
 static CXXRecordDecl * findCreateClassDecl(Sema &S, TypeDefinition ^TypeDef) {
   if (!TypeDef) return 0;
 
-  NamespaceDecl *NS = findCreateNamespaces(S, TypeDef);
+  DeclContext *NS = findCreateNamespaces(S, TypeDef);
   if (!NS) return 0;
 
   IdentifierInfo *II = getIdentifier(S, TypeDef->Name);
