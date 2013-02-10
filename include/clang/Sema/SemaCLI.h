@@ -23,6 +23,7 @@ namespace clang {
 
 struct CLIPrimitiveType {
   int Token;
+  int Hash;
   clang::QualType Ty;
   clang::CXXRecordDecl *Decl;
 };
@@ -34,11 +35,13 @@ struct CLIPrimitiveTypes {
 #undef CLI_TYPE
 };
 
+class CLICecilContext;
+
 class CLISemaContext {
 public:
   CLISemaContext() : CLINamespace(0), Array(0), InteriorPtr(0),
     PinPtr(0), SafeCast(0), ParamArrayAttribute(0),
-    IEnumerable(0), GenericIEnumerable(0) {
+    IEnumerable(0), GenericIEnumerable(0), CecilContext(nullptr) {
   }
 
   CLIPrimitiveTypes Types;
@@ -51,6 +54,8 @@ public:
   CXXRecordDecl *ParamArrayAttribute;
   CXXRecordDecl *IEnumerable;
   CXXRecordDecl *GenericIEnumerable;
+
+  CLICecilContext *CecilContext;
 };
 
 bool HasCLIParamArrayAttribute(Sema &S, FunctionDecl* Fn, QualType& Type);

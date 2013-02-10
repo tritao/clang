@@ -34,6 +34,8 @@ using namespace System::Runtime::InteropServices;
 using namespace Mono::Cecil;
 
 #include "CLIInterop.h"
+#include <vcclr.h>
+
 namespace clang {
 using namespace sema;
 using namespace clix;
@@ -658,63 +660,69 @@ static CXXRecordDecl * findCreateClassDecl(Sema &S, TypeReference ^TypeRef) {
 
 static bool convertPrimitiveType(Sema &S, TypeReference ^TypeRef, QualType &Type) {
   ASTContext& C = S.getASTContext();
-  int Token = TypeRef->MetadataToken.ToInt32();
+
+  TypeDefinition ^TypeDef = TypeRef->Resolve();
+  if (!TypeDef)
+      return false;
+
+  int Hash = llvm::HashString(marshalString<E_UTF8>(TypeDef->FullName));
 
   CLIPrimitiveTypes &P = S.getCLIContext()->Types;
 
-  if (Token == P.Void.Token) {
+  if (Hash == P.Void.Hash) {
     Type = C.VoidTy;
     return true;
-  } else if (Token == P.Boolean.Token) {
+  } else if (Hash == P.Boolean.Hash) {
     Type = C.BoolTy;
     return true;
-  } else if (Token == P.Char.Token) {
+  } else if (Hash == P.Char.Hash) {
     Type = C.WCharTy;
     return true;
-  } else if (Token == P.Byte.Token) {
+  } else if (Hash == P.Byte.Hash) {
     Type = C.UnsignedCharTy;
     return true;
-  } else if (Token == P.SByte.Token) {
+  } else if (Hash == P.SByte.Hash) {
     // FIXME: Check for modopt IsSignUnspecifiedByte
     Type = C.CharTy;
     return true;
-  } else if (Token == P.Int16.Token) {
+  } else if (Hash == P.Int16.Hash) {
     Type = C.ShortTy;
     return true;
-  } else if (Token == P.UInt16.Token) {
+  } else if (Hash == P.UInt16.Hash) {
     Type = C.UnsignedShortTy;
     return true;
-  } else if (Token == P.Int32.Token) {
+  } else if (Hash == P.Int32.Hash) {
     // FIXME: Check for modopt IsLong
     Type = C.IntTy;
     return true;
-  } else if (Token == P.UInt32.Token) {
+  } else if (Hash == P.UInt32.Hash) {
     // FIXME: Check for modopt IsLong
     Type = C.UnsignedIntTy;
     return true;
-  } else if (Token == P.Int64.Token) {
+  } else if (Hash == P.Int64.Hash) {
     Type = C.LongLongTy;
     return true;
-  } else if (Token == P.UInt64.Token) {
+  } else if (Hash == P.UInt64.Hash) {
     Type = C.UnsignedLongLongTy;
     return true;
-  } else if (Token == P.Single.Token) {
+  } else if (Hash == P.Single.Hash) {
     Type = C.FloatTy;
     return true;
-  } else if (Token == P.Double.Token) {
+  } else if (Hash == P.Double.Hash) {
     // FIXME: Check for modopt IsLong
     Type = C.DoubleTy;
     return true;
-  } else if (Token == P.String.Token) {
+  } else if (Hash == P.String.Hash) {
     Type = P.String.Ty;
     return true;
-  } else if (Token == P.IntPtr.Token) {
+  } else if (Hash == P.IntPtr.Hash) {
     Type = P.IntPtr.Ty;
     return true;
-  } else if (Token == P.UIntPtr.Token) {
+  } else if (Hash == P.UIntPtr.Hash) {
     Type = P.UIntPtr.Ty;
     return true;
-  } else 
+  }
+
   return false;
 }
 
@@ -798,7 +806,10 @@ static bool findCreateType(Sema &S, TypeReference ^TypeRef, QualType &Type,
 
 static void initializeCLIType(Sema &S, CLIPrimitiveType &P, CLITypeKind Kind,
                               TypeDefinition ^Type) {
-  P.Token = Type->MetadataToken.ToInt32();
+  using namespace clix;
+
+  P.Hash = llvm::HashString(marshalString<E_UTF8>(Type->FullName));
+  P.Token = Type->MetadataToken.ToUInt32();
   P.Decl = createClass(S, Type);
   P.Decl->getCLIData()->Kind = Kind;
 
@@ -1016,6 +1027,12 @@ static void initializeCLINamespace(Sema &S) {
   TU->addDecl(UD);
 }
 
+class CLICecilContext
+{
+public:
+    gcroot<ReaderParameters^> ReaderParameters;
+};
+
 void Sema::LoadManagedAssembly(FileID FID) {
   SourceManager &SourceMgr = getSourceManager();
   
@@ -1028,8 +1045,17 @@ void Sema::LoadManagedAssembly(FileID FID) {
   array<Byte> ^Data = gcnew array<Byte>(Size);
   Marshal::Copy(IntPtr(Buf), Data, 0, Int32(Size)); 
 
+  if (!CLIContext->CecilContext) {
+    CLICecilContext *CecilContext = new CLICecilContext();
+    CLIContext->CecilContext = CecilContext;
+
+    ReaderParameters ^Parameters = gcnew ReaderParameters();
+    Parameters->AssemblyResolver = gcnew DefaultAssemblyResolver();
+    CecilContext->ReaderParameters = Parameters;
+  }
+
   AssemblyDefinition ^Assembly = AssemblyDefinition::ReadAssembly(
-    gcnew MemoryStream(Data));
+    gcnew MemoryStream(Data), CLIContext->CecilContext->ReaderParameters);
 
   assert(CLIContext && "Expected an initialized CLI context");
   
