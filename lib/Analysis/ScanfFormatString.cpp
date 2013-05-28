@@ -13,8 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Analysis/Analyses/FormatString.h"
-#include "clang/Basic/TargetInfo.h"
 #include "FormatStringParsing.h"
+#include "clang/Basic/TargetInfo.h"
 
 using clang::analyze_format_string::ArgType;
 using clang::analyze_format_string::FormatStringHandler;
@@ -311,7 +311,7 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
         case LengthModifier::None:
           return ArgType::PtrTo(ArgType::AnyCharTy);
         case LengthModifier::AsLong:
-          return ArgType::PtrTo(ArgType(Ctx.getWCharType(), "wchar_t"));
+          return ArgType::PtrTo(ArgType(Ctx.getWideCharType(), "wchar_t"));
         case LengthModifier::AsAllocate:
         case LengthModifier::AsMAllocate:
           return ArgType::PtrTo(ArgType::CStrTy);
@@ -323,7 +323,7 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
       // FIXME: Mac OS X specific?
       switch (LM.getKind()) {
         case LengthModifier::None:
-          return ArgType::PtrTo(ArgType(Ctx.getWCharType(), "wchar_t"));
+          return ArgType::PtrTo(ArgType(Ctx.getWideCharType(), "wchar_t"));
         case LengthModifier::AsAllocate:
         case LengthModifier::AsMAllocate:
           return ArgType::PtrTo(ArgType(ArgType::WCStrTy, "wchar_t *"));
@@ -445,7 +445,7 @@ bool ScanfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
   }
 
   // Handle size_t, ptrdiff_t, etc. that have dedicated length modifiers in C99.
-  if (isa<TypedefType>(PT) && (LangOpt.C99 || LangOpt.CPlusPlus0x))
+  if (isa<TypedefType>(PT) && (LangOpt.C99 || LangOpt.CPlusPlus11))
     namedTypeToLengthModifier(PT, LM);
 
   // If fixing the length modifier was enough, we are done.

@@ -41,24 +41,6 @@ static const NamedDecl *getBestPropertyDecl(const ObjCPropertyRefExpr *PropE) {
   return PropE->getImplicitPropertyGetter();
 }
 
-static bool isSelfExpr(const Expr *E) {
-  E = E->IgnoreParenImpCasts();
-
-  const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E);
-  if (!DRE)
-    return false;
-
-  const ImplicitParamDecl *Param = dyn_cast<ImplicitParamDecl>(DRE->getDecl());
-  if (!Param)
-    return false;
-
-  const ObjCMethodDecl *M = dyn_cast<ObjCMethodDecl>(Param->getDeclContext());
-  if (!M)
-    return false;
-
-  return M->getSelfDecl() == Param;
-}
-
 FunctionScopeInfo::WeakObjectProfileTy::BaseInfoTy
 FunctionScopeInfo::WeakObjectProfileTy::getBaseInfo(const Expr *E) {
   E = E->IgnoreParenCasts();
@@ -80,7 +62,7 @@ FunctionScopeInfo::WeakObjectProfileTy::getBaseInfo(const Expr *E) {
   case Stmt::ObjCIvarRefExprClass: {
     const ObjCIvarRefExpr *IE = cast<ObjCIvarRefExpr>(E);
     D = IE->getDecl();
-    IsExact = isSelfExpr(IE->getBase());
+    IsExact = IE->getBase()->isObjCSelfExpr();
     break;
   }
   case Stmt::PseudoObjectExprClass: {
@@ -94,7 +76,7 @@ FunctionScopeInfo::WeakObjectProfileTy::getBaseInfo(const Expr *E) {
       if (const OpaqueValueExpr *OVE = dyn_cast<OpaqueValueExpr>(DoubleBase))
         DoubleBase = OVE->getSourceExpr();
 
-      IsExact = isSelfExpr(DoubleBase);
+      IsExact = DoubleBase->isObjCSelfExpr();
     }
     break;
   }
@@ -121,6 +103,14 @@ FunctionScopeInfo::WeakObjectProfileTy::WeakObjectProfileTy(
   }
 }
 
+FunctionScopeInfo::WeakObjectProfileTy::WeakObjectProfileTy(const Expr *BaseE,
+                                                const ObjCPropertyDecl *Prop)
+    : Base(0, true), Property(Prop) {
+  if (BaseE)
+    Base = getBaseInfo(BaseE);
+  // else, this is a message accessing a property on super.
+}
+
 FunctionScopeInfo::WeakObjectProfileTy::WeakObjectProfileTy(
                                                       const DeclRefExpr *DRE)
   : Base(0, true), Property(DRE->getDecl()) {
@@ -132,8 +122,16 @@ FunctionScopeInfo::WeakObjectProfileTy::WeakObjectProfileTy(
   : Base(getBaseInfo(IvarE->getBase())), Property(IvarE->getDecl()) {
 }
 
+void FunctionScopeInfo::recordUseOfWeak(const ObjCMessageExpr *Msg,
+                                        const ObjCPropertyDecl *Prop) {
+  assert(Msg && Prop);
+  WeakUseVector &Uses =
+    WeakObjectUses[WeakObjectProfileTy(Msg->getInstanceReceiver(), Prop)];
+  Uses.push_back(WeakUseTy(Msg, Msg->getNumArgs() == 0));
+}
+
 void FunctionScopeInfo::markSafeWeakUse(const Expr *E) {
-  E = E->IgnoreParenImpCasts();
+  E = E->IgnoreParenCasts();
 
   if (const PseudoObjectExpr *POE = dyn_cast<PseudoObjectExpr>(E)) {
     markSafeWeakUse(POE->getSyntacticForm());
@@ -156,11 +154,21 @@ void FunctionScopeInfo::markSafeWeakUse(const Expr *E) {
   // Has this weak object been seen before?
   FunctionScopeInfo::WeakObjectUseMap::iterator Uses;
   if (const ObjCPropertyRefExpr *RefExpr = dyn_cast<ObjCPropertyRefExpr>(E))
-    Uses = WeakObjectUses.find(FunctionScopeInfo::WeakObjectProfileTy(RefExpr));
+    Uses = WeakObjectUses.find(WeakObjectProfileTy(RefExpr));
   else if (const ObjCIvarRefExpr *IvarE = dyn_cast<ObjCIvarRefExpr>(E))
-    Uses = WeakObjectUses.find(FunctionScopeInfo::WeakObjectProfileTy(IvarE));
+    Uses = WeakObjectUses.find(WeakObjectProfileTy(IvarE));
   else if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E))
-    Uses = WeakObjectUses.find(FunctionScopeInfo::WeakObjectProfileTy(DRE));
+    Uses = WeakObjectUses.find(WeakObjectProfileTy(DRE));
+  else if (const ObjCMessageExpr *MsgE = dyn_cast<ObjCMessageExpr>(E)) {
+    Uses = WeakObjectUses.end();
+    if (const ObjCMethodDecl *MD = MsgE->getMethodDecl()) {
+      if (const ObjCPropertyDecl *Prop = MD->findPropertyDecl()) {
+        Uses =
+          WeakObjectUses.find(WeakObjectProfileTy(MsgE->getInstanceReceiver(),
+                                                  Prop));
+      }
+    }
+  }
   else
     return;
 
@@ -179,3 +187,4 @@ void FunctionScopeInfo::markSafeWeakUse(const Expr *E) {
 FunctionScopeInfo::~FunctionScopeInfo() { }
 BlockScopeInfo::~BlockScopeInfo() { }
 LambdaScopeInfo::~LambdaScopeInfo() { }
+CapturedRegionScopeInfo::~CapturedRegionScopeInfo() { }

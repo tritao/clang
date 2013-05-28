@@ -15,11 +15,6 @@ struct S1;
 struct S2;
 struct S2;
 
-#ifdef __cplusplus
-template<typename T> class Vector;
+int func1(int);
 
-template<typename T> class List {
-public:
-  void push_back(T);
-};
-#endif
+void eventually_noreturn(void);

@@ -9,12 +9,14 @@
 
 CLANG_LEVEL = ../..
 
+PARALLEL_DIRS = Dynamic
+
 TESTNAME = ASTMatchers
 include $(CLANG_LEVEL)/../../Makefile.config
-LINK_COMPONENTS := $(TARGETS_TO_BUILD) asmparser support mc
+LINK_COMPONENTS := $(TARGETS_TO_BUILD) asmparser bitreader support mc
 USEDLIBS = clangTooling.a clangFrontend.a clangSerialization.a clangDriver.a \
            clangRewriteCore.a clangRewriteFrontend.a \
-		   clangParse.a clangSema.a clangAnalysis.a \
-           clangAST.a clangASTMatchers.a clangLex.a clangBasic.a clangEdit.a
+           clangParse.a clangSema.a clangAnalysis.a \
+           clangEdit.a clangAST.a clangASTMatchers.a clangLex.a clangBasic.a
 
 include $(CLANG_LEVEL)/unittests/Makefile

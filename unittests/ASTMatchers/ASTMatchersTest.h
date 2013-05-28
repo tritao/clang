@@ -25,6 +25,7 @@ class BoundNodesCallback {
 public:
   virtual ~BoundNodesCallback() {}
   virtual bool run(const BoundNodes *BoundNodes) = 0;
+  virtual bool run(const BoundNodes *BoundNodes, ASTContext *Context) = 0;
 };
 
 // If 'FindResultVerifier' is not NULL, sets *Verified to the result of
@@ -37,7 +38,7 @@ public:
 
   virtual void run(const MatchFinder::MatchResult &Result) {
     if (FindResultReviewer != NULL) {
-      *Verified = FindResultReviewer->run(&Result.Nodes);
+      *Verified |= FindResultReviewer->run(&Result.Nodes, Result.Context);
     } else {
       *Verified = true;
     }
@@ -83,12 +84,47 @@ testing::AssertionResult notMatches(const std::string &Code,
   return matchesConditionally(Code, AMatcher, false, "-std=c++11");
 }
 
+inline testing::AssertionResult
+matchesConditionallyDynamic(const std::string &Code,
+                            const internal::DynTypedMatcher &AMatcher,
+                            bool ExpectMatch, llvm::StringRef CompileArg) {
+  bool Found = false;
+  MatchFinder Finder;
+  Finder.addDynamicMatcher(AMatcher, new VerifyMatch(0, &Found));
+  OwningPtr<FrontendActionFactory> Factory(newFrontendActionFactory(&Finder));
+  // Some tests use typeof, which is a gnu extension.
+  std::vector<std::string> Args(1, CompileArg);
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, Args)) {
+    return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
+  }
+  if (!Found && ExpectMatch) {
+    return testing::AssertionFailure()
+      << "Could not find match in \"" << Code << "\"";
+  } else if (Found && !ExpectMatch) {
+    return testing::AssertionFailure()
+      << "Found unexpected match in \"" << Code << "\"";
+  }
+  return testing::AssertionSuccess();
+}
+
+inline testing::AssertionResult
+matchesDynamic(const std::string &Code,
+               const internal::DynTypedMatcher &AMatcher) {
+  return matchesConditionallyDynamic(Code, AMatcher, true, "-std=c++11");
+}
+
+inline testing::AssertionResult
+notMatchesDynamic(const std::string &Code,
+                  const internal::DynTypedMatcher &AMatcher) {
+  return matchesConditionallyDynamic(Code, AMatcher, false, "-std=c++11");
+}
+
 template <typename T>
 testing::AssertionResult
 matchAndVerifyResultConditionally(const std::string &Code, const T &AMatcher,
                                   BoundNodesCallback *FindResultVerifier,
                                   bool ExpectResult) {
-  llvm::OwningPtr<BoundNodesCallback> ScopedVerifier(FindResultVerifier);
+  OwningPtr<BoundNodesCallback> ScopedVerifier(FindResultVerifier);
   bool VerifiedResult = false;
   MatchFinder Finder;
   Finder.addMatcher(

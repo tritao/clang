@@ -1,5 +1,6 @@
+add_subdirectory(Dynamic)
+
 set(LLVM_LINK_COMPONENTS support)
-set(LLVM_USED_LIBS clangBasic clangAST)
 
 add_clang_library(clangASTMatchers
   ASTMatchFinder.cpp
@@ -14,4 +15,9 @@ add_dependencies(clangASTMatchers
   ClangDeclNodes
   ClangDiagnosticCommon
   ClangStmtNodes
+  )
+
+target_link_libraries(clangASTMatchers
+  clangBasic
+  clangAST
   )

@@ -15,9 +15,10 @@
 #ifndef CLANG_CODEGEN_TARGETINFO_H
 #define CLANG_CODEGEN_TARGETINFO_H
 
-#include "clang/Basic/LLVM.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/LLVM.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallString.h"
 
 namespace llvm {
   class GlobalValue;
@@ -158,12 +159,20 @@ namespace clang {
     ///   - the conventions are substantively different in how they pass
     ///     arguments, because in this case using the variadic convention
     ///     will lead to C99 violations.
-    /// It is not necessarily correct when arguments are passed in the
-    /// same way and some out-of-band information is passed for the
-    /// benefit of variadic callees, as is the case for x86-64.
-    /// In this case the ABI should be consulted.
+    ///
+    /// However, some platforms make the conventions identical except
+    /// for passing additional out-of-band information to a variadic
+    /// function: for example, x86-64 passes the number of SSE
+    /// arguments in %al.  On these platforms, it is desireable to
+    /// call unprototyped functions using the variadic convention so
+    /// that unprototyped calls to varargs functions still succeed.
     virtual bool isNoProtoCallVariadic(const CodeGen::CallArgList &args,
                                        const FunctionNoProtoType *fnType) const;
+
+    /// Gets the linker options necessary to link a dependent library on this
+    /// platform.
+    virtual void getDependentLibraryOption(llvm::StringRef Lib,
+                                           llvm::SmallString<24> &Opt) const;
   };
 }
 

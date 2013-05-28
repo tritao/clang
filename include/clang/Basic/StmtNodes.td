@@ -27,6 +27,7 @@ def DeclStmt  : Stmt;
 def SwitchCase : Stmt<1>;
 def CaseStmt : DStmt<SwitchCase>;
 def DefaultStmt : DStmt<SwitchCase>;
+def CapturedStmt : Stmt;
 
 // Asm statements
 def AsmStmt : Stmt<1>;
@@ -107,6 +108,7 @@ def CXXNullPtrLiteralExpr : DStmt<Expr>;
 def CXXThisExpr : DStmt<Expr>;
 def CXXThrowExpr : DStmt<Expr>;
 def CXXDefaultArgExpr : DStmt<Expr>;
+def CXXDefaultInitExpr : DStmt<Expr>;
 def CXXScalarValueInitExpr : DStmt<Expr>;
 def CXXNewExpr : DStmt<Expr>;
 def CXXDeleteExpr : DStmt<Expr>;
@@ -171,6 +173,7 @@ def BlockExpr : DStmt<Expr>;
 def OpaqueValueExpr : DStmt<Expr>;
 
 // Microsoft Extensions.
+def MSPropertyRefExpr : DStmt<Expr>;
 def CXXUuidofExpr : DStmt<Expr>; 
 def SEHTryStmt : Stmt;
 def SEHLeaveStmt : Stmt;

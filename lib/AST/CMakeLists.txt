@@ -5,13 +5,13 @@ add_clang_library(clangAST
   ASTConsumer.cpp
   ASTContext.cpp
   ASTDiagnostic.cpp
+  ASTDumper.cpp
   ASTImporter.cpp
   AttrImpl.cpp
   CXXInheritance.cpp
   Comment.cpp
   CommentBriefParser.cpp
   CommentCommandTraits.cpp
-  CommentDumper.cpp
   CommentLexer.cpp
   CommentParser.cpp
   CommentSema.cpp
@@ -23,6 +23,7 @@ add_clang_library(clangAST
   DeclFriend.cpp
   DeclGroup.cpp
   DeclObjC.cpp
+  DeclOpenMP.cpp
   DeclPrinter.cpp
   DeclTemplate.cpp
   DumpXML.cpp
@@ -47,7 +48,6 @@ add_clang_library(clangAST
   RecordLayoutBuilder.cpp
   SelectorLocationsKind.cpp
   Stmt.cpp
-  StmtDumper.cpp
   StmtIterator.cpp
   StmtPrinter.cpp
   StmtProfile.cpp
@@ -66,10 +66,13 @@ add_dependencies(clangAST
   ClangAttrClasses
   ClangAttrList
   ClangAttrImpl
+  ClangAttrDump
   ClangCommentCommandInfo
+  ClangCommentCommandList
   ClangCommentNodes
   ClangCommentHTMLTags
   ClangCommentHTMLTagsProperties
+  ClangCommentHTMLNamedCharacterReferences
   ClangDeclNodes
   ClangDiagnosticAST
   ClangDiagnosticComment

@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -analyze -analyzer-checker=deadcode.DeadStores -verify -Wno-unreachable-code %s
-// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -analyze -analyzer-store=region -analyzer-constraints=range -analyzer-checker=deadcode.DeadStores -verify -Wno-unreachable-code %s
+// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -std=c++11 -analyze -analyzer-checker=deadcode.DeadStores -verify -Wno-unreachable-code %s
+// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -std=c++11 -analyze -analyzer-store=region -analyzer-constraints=range -analyzer-checker=deadcode.DeadStores -verify -Wno-unreachable-code %s
 
 //===----------------------------------------------------------------------===//
 // Basic dead store checking (but in C++ mode).
@@ -124,5 +124,53 @@ int test_5() {
     return x + z;
   }
   return 1;
+}
+
+
+int test_6_aux(unsigned x);
+
+void test_6() {
+  unsigned currDestLen = 0;  // no-warning
+  try {
+    while (test_6_aux(currDestLen)) {
+      currDestLen += 2; // no-warning
+    } 
+  }
+  catch (void *) {}
+}
+
+void test_6b() {
+  unsigned currDestLen = 0;  // no-warning
+  try {
+    while (test_6_aux(currDestLen)) {
+      currDestLen += 2; // expected-warning {{Value stored to 'currDestLen' is never read}}
+      break;
+    } 
+  }
+  catch (void *) {}
+}
+
+
+void testCXX11Using() {
+  using Int = int;
+  Int value;
+  value = 1; // expected-warning {{never read}}
+}
+
+//===----------------------------------------------------------------------===//
+// Dead stores in template instantiations (do not warn).
+//===----------------------------------------------------------------------===//
+
+template <bool f> int radar13213575_testit(int i) {
+  int x = 5+i; // warning: Value stored to 'x' during its initialization is never read
+  int y = 7;
+  if (f)
+    return x;
+  else
+    return y;
+}
+
+int radar_13213575() {
+  return radar13213575_testit<true>(5) + radar13213575_testit<false>(3);
 }
 

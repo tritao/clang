@@ -13,19 +13,23 @@
 #ifndef LLVM_CLANG_AST_ASTMUTATIONLISTENER_H
 #define LLVM_CLANG_AST_ASTMUTATIONLISTENER_H
 
+#include "clang/Basic/SourceLocation.h"
+
 namespace clang {
-  class Decl;
-  class DeclContext;
-  class TagDecl;
   class CXXRecordDecl;
   class ClassTemplateDecl;
   class ClassTemplateSpecializationDecl;
+  class Decl;
+  class DeclContext;
   class FunctionDecl;
   class FunctionTemplateDecl;
   class ObjCCategoryDecl;
-  class ObjCInterfaceDecl;
   class ObjCContainerDecl;
+  class ObjCInterfaceDecl;
   class ObjCPropertyDecl;
+  class QualType;
+  class TagDecl;
+  class VarDecl;
 
 /// \brief An abstract interface that should be implemented by listeners
 /// that want to be notified when an AST entity gets modified after its
@@ -52,6 +56,9 @@ public:
   /// template declaration.
   virtual void AddedCXXTemplateSpecialization(const FunctionTemplateDecl *TD,
                                               const FunctionDecl *D) {}
+
+  /// \brief A function's return type has been deduced.
+  virtual void DeducedReturnType(const FunctionDecl *FD, QualType ReturnType);
 
   /// \brief An implicit member got a definition.
   virtual void CompletedImplicitDefinition(const FunctionDecl *D) {}

@@ -14,9 +14,12 @@
 #ifndef LLVM_CLANG_AST_ASTCONSUMER_H
 #define LLVM_CLANG_AST_ASTCONSUMER_H
 
+#include "llvm/ADT/StringRef.h"
+
 namespace clang {
   class ASTContext;
   class CXXRecordDecl;
+  class Decl;
   class DeclGroupRef;
   class HandleTagDeclDefinition;
   class ASTMutationListener;
@@ -25,6 +28,7 @@ namespace clang {
   class TagDecl;
   class VarDecl;
   class FunctionDecl;
+  class ImportDecl;
 
 /// ASTConsumer - This is an abstract interface that should be implemented by
 /// clients that read ASTs.  This abstraction layer allows the client to be
@@ -79,6 +83,20 @@ public:
   /// The default implementation ignored them.
   virtual void HandleTopLevelDeclInObjCContainer(DeclGroupRef D);
 
+  /// \brief Handle an ImportDecl that was implicitly created due to an
+  /// inclusion directive.
+  /// The default implementation passes it to HandleTopLevelDecl.
+  virtual void HandleImplicitImportDecl(ImportDecl *D);
+
+  /// \brief Handle a pragma that appends to Linker Options.  Currently this
+  /// only exists to support Microsoft's #pragma comment(linker, "/foo").
+  virtual void HandleLinkerOptionPragma(llvm::StringRef Opts) {}
+
+  /// \brief Handle a dependent library created by a pragma in the source.
+  /// Currently this only exists to support Microsoft's
+  /// #pragma comment(lib, "/foo").
+  virtual void HandleDependentLibrary(llvm::StringRef Lib) {}
+
   /// CompleteTentativeDefinition - Callback invoked at the end of a translation
   /// unit to notify the consumer that the given tentative definition should be
   /// completed.
@@ -119,8 +137,13 @@ public:
   /// PrintStats - If desired, print any statistics.
   virtual void PrintStats() {}
 
-  // Support isa/cast/dyn_cast
-  static bool classof(const ASTConsumer *) { return true; }
+  /// \brief This callback is called for each function if the Parser was
+  /// initialized with \c SkipFunctionBodies set to \c true.
+  ///
+  /// \return \c true if the function's body should be skipped. The function
+  /// body may be parsed anyway if it is needed (for instance, if it contains
+  /// the code completion point or is constexpr).
+  virtual bool shouldSkipFunctionBody(Decl *D) { return true; }
 };
 
 } // end namespace clang.

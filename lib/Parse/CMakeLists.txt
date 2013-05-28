@@ -8,6 +8,7 @@ add_clang_library(clangParse
   ParseExprCXX.cpp
   ParseInit.cpp
   ParseObjc.cpp
+  ParseOpenMP.cpp
   ParsePragma.cpp
   ParseStmt.cpp
   ParseTemplate.cpp
@@ -17,6 +18,7 @@ add_clang_library(clangParse
 
 add_dependencies(clangParse
   ClangAttrClasses
+  ClangAttrExprArgs
   ClangAttrLateParsed
   ClangAttrList
   ClangAttrParsedAttrList

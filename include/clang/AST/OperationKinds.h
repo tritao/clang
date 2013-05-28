@@ -294,6 +294,9 @@ enum CastKind {
   // callee of a call expression.
   CK_BuiltinFnToFnPtr,
 
+  // Convert a zero value for OpenCL event_t initialization.
+  CK_ZeroToOCLEvent,
+
   // Convert from a string literal to a C++/CLI string handle.
   CK_CLI_StringToHandle,
 

@@ -116,8 +116,8 @@ struct X1 {
 };
 
 struct X2 {
-  operator int*(); // expected-note {{candidate function}}
-  operator float*(); // expected-note {{candidate function}}
+  operator int*(); // expected-note {{conversion}}
+  operator float*(); // expected-note {{conversion}}
 };
 
 void test_delete_conv(X0 x0, X1 x1, X2 x2) {
@@ -499,3 +499,14 @@ namespace PR12061 {
     DeferredCookieTaskTest() {}
   };
 }
+
+class DeletingPlaceholder {
+  int* f() {
+    delete f; // expected-error {{reference to non-static member function must be called; did you mean to call it with no arguments?}}
+    return 0;
+  }
+  int* g(int, int) {
+    delete g; // expected-error {{reference to non-static member function must be called}}
+    return 0;
+  }
+};

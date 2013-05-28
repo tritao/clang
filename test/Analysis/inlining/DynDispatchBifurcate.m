@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=core,osx -analyzer-ipa=dynamic-bifurcate -verify %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=core,osx -analyzer-config ipa=dynamic-bifurcate -verify %s
 
 #include "InlineObjCInstanceMethod.h"
 
@@ -181,7 +181,7 @@ int testPropertySynthesized(PublicClass *p) {
 }
 
 // Test definition not available edge case.
-@interface DefNotAvailClass : NSObject
+@interface DefNotAvailClass : NSObject // expected-note {{receiver is instance of class declared here}}
 @end
 id testDefNotAvailableInlined(DefNotAvailClass *C) {
   return [C mem]; // expected-warning {{instance method '-mem' not found}}

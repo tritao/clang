@@ -264,7 +264,7 @@ namespace PR10053 {
 }
 
 namespace PR10187 {
-  namespace A {
+  namespace A1 {
     template<typename T>
     struct S {
       void f() {
@@ -275,6 +275,25 @@ namespace PR10187 {
     };
     void g() {
       S<int>().f(); // expected-note {{here}}
+    }
+  }
+
+  namespace A2 {
+    template<typename T>
+    struct S {
+      void f() {
+        for (auto &a : e)
+          __range(a); // expected-error {{undeclared identifier '__range'}}
+      }
+      T e[10];
+    };
+    void g() {
+      S<int>().f(); // expected-note {{here}}
+    }
+    struct X {};
+    void __range(X);
+    void h() {
+      S<X>().f();
     }
   }
 
@@ -319,8 +338,53 @@ namespace PR11421 {
 template < unsigned > struct X {
   static const unsigned dimension = 3;
   template<unsigned dim=dimension> 
-  struct Y: Y<dim> { }; // expected-error {{incomplete type}} expected-note {{is not complete until the closing}}
+  struct Y: Y<dim> { }; // expected-error{{circular inheritance between 'Y<dim>' and 'Y<dim>'}}
 };
 typedef X<3> X3;
-X3::Y<>::iterator it; // expected-note {{requested here}}
+X3::Y<>::iterator it; // expected-error {{no type named 'iterator' in 'PR11421::X<3>::Y<3>'}}
 }
+
+namespace rdar12629723 {
+  template<class T>
+  struct X {
+    struct C : public C { }; // expected-error{{circular inheritance between 'rdar12629723::X::C' and 'rdar12629723::X::C'}}
+
+    struct B;
+
+    struct A : public B {  // expected-note{{'rdar12629723::X::A' declared here}}
+      virtual void foo() { }
+    };
+    struct B;
+
+    struct D : T::foo { };
+    struct E : D { };
+  };
+
+  template<class T>
+  struct X<T>::B : public A {  // expected-error{{circular inheritance between 'rdar12629723::X::A' and 'rdar12629723::X::B'}}
+    virtual void foo() { }
+  };
+}
+
+namespace test_reserved_identifiers {
+  template<typename A, typename B> void tempf(A a, B b) {
+    a + b;  // expected-error{{call to function 'operator+' that is neither visible in the template definition nor found by argument-dependent lookup}}
+  }
+  namespace __gnu_cxx { struct X {}; }
+  namespace ns { struct Y {}; }
+  void operator+(__gnu_cxx::X, ns::Y);  // expected-note{{or in namespace 'test_reserved_identifiers::ns'}}
+  void test() {
+    __gnu_cxx::X x;
+    ns::Y y;
+    tempf(x, y);  // expected-note{{in instantiation of}}
+  }
+}
+
+// This test must live in the global namespace.
+struct PR14695_X {};
+// FIXME: This note is bogus; it is the using directive which would need to move
+// to prior to the call site to fix the problem.
+namespace PR14695_A { void PR14695_f(PR14695_X); } // expected-note {{'PR14695_f' should be declared prior to the call site or in the global namespace}}
+template<typename T> void PR14695_g(T t) { PR14695_f(t); } // expected-error {{call to function 'PR14695_f' that is neither visible in the template definition nor found by argument-dependent lookup}}
+using namespace PR14695_A;
+template void PR14695_g(PR14695_X); // expected-note{{requested here}}

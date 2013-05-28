@@ -1,4 +1,4 @@
-//===- unittests/Basic/LexerTest.cpp ------ Lexer tests -------------------===//
+//===- unittests/Lex/LexerTest.cpp ------ Lexer tests ---------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,17 +7,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Basic/SourceManager.h"
-#include "clang/Basic/FileManager.h"
+#include "clang/Lex/Lexer.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticOptions.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
-#include "clang/Basic/TargetOptions.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
-#include "clang/Lex/ModuleLoader.h"
+#include "clang/Basic/TargetOptions.h"
 #include "clang/Lex/HeaderSearch.h"
+#include "clang/Lex/HeaderSearchOptions.h"
+#include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/Preprocessor.h"
+#include "clang/Lex/PreprocessorOptions.h"
 #include "llvm/Config/config.h"
-
 #include "gtest/gtest.h"
 
 using namespace llvm;
@@ -25,16 +28,74 @@ using namespace clang;
 
 namespace {
 
+class VoidModuleLoader : public ModuleLoader {
+  virtual ModuleLoadResult loadModule(SourceLocation ImportLoc, 
+                                      ModuleIdPath Path,
+                                      Module::NameVisibilityKind Visibility,
+                                      bool IsInclusionDirective) {
+    return ModuleLoadResult();
+  }
+
+  virtual void makeModuleVisible(Module *Mod,
+                                 Module::NameVisibilityKind Visibility,
+                                 SourceLocation ImportLoc,
+                                 bool Complain) { }
+};
+
 // The test fixture.
 class LexerTest : public ::testing::Test {
 protected:
   LexerTest()
     : FileMgr(FileMgrOpts),
       DiagID(new DiagnosticIDs()),
-      Diags(DiagID, new IgnoringDiagConsumer()),
-      SourceMgr(Diags, FileMgr) {
-    TargetOpts.Triple = "x86_64-apple-darwin11.1.0";
-    Target = TargetInfo::CreateTargetInfo(Diags, TargetOpts);
+      Diags(DiagID, new DiagnosticOptions, new IgnoringDiagConsumer()),
+      SourceMgr(Diags, FileMgr),
+      TargetOpts(new TargetOptions) 
+  {
+    TargetOpts->Triple = "x86_64-apple-darwin11.1.0";
+    Target = TargetInfo::CreateTargetInfo(Diags, &*TargetOpts);
+  }
+
+  std::vector<Token> CheckLex(StringRef Source,
+                              ArrayRef<tok::TokenKind> ExpectedTokens) {
+    MemoryBuffer *buf = MemoryBuffer::getMemBuffer(Source);
+    (void) SourceMgr.createMainFileIDForMemBuffer(buf);
+
+    VoidModuleLoader ModLoader;
+    HeaderSearch HeaderInfo(new HeaderSearchOptions, FileMgr, Diags, LangOpts,
+                            Target.getPtr());
+    Preprocessor PP(new PreprocessorOptions(), Diags, LangOpts, Target.getPtr(),
+                    SourceMgr, HeaderInfo, ModLoader, /*IILookup =*/ 0,
+                    /*OwnsHeaderSearch =*/ false,
+                    /*DelayInitialization =*/ false);
+    PP.EnterMainSourceFile();
+
+    std::vector<Token> toks;
+    while (1) {
+      Token tok;
+      PP.Lex(tok);
+      if (tok.is(tok::eof))
+        break;
+      toks.push_back(tok);
+    }
+
+    EXPECT_EQ(ExpectedTokens.size(), toks.size());
+    for (unsigned i = 0, e = ExpectedTokens.size(); i != e; ++i) {
+      EXPECT_EQ(ExpectedTokens[i], toks[i].getKind());
+    }
+
+    return toks;
+  }
+
+  std::string getSourceText(Token Begin, Token End) {
+    bool Invalid;
+    StringRef Str =
+        Lexer::getSourceText(CharSourceRange::getTokenRange(SourceRange(
+                                    Begin.getLocation(), End.getLocation())),
+                             SourceMgr, LangOpts, &Invalid);
+    if (Invalid)
+      return "<INVALID>";
+    return Str;
   }
 
   FileSystemOptions FileMgrOpts;
@@ -43,63 +104,183 @@ protected:
   DiagnosticsEngine Diags;
   SourceManager SourceMgr;
   LangOptions LangOpts;
-  TargetOptions TargetOpts;
+  IntrusiveRefCntPtr<TargetOptions> TargetOpts;
   IntrusiveRefCntPtr<TargetInfo> Target;
 };
 
-class VoidModuleLoader : public ModuleLoader {
-  virtual Module *loadModule(SourceLocation ImportLoc, ModuleIdPath Path,
-                             Module::NameVisibilityKind Visibility,
-                             bool IsInclusionDirective) {
-    return 0;
-  }
-};
+TEST_F(LexerTest, GetSourceTextExpandsToMaximumInMacroArgument) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::l_paren);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_paren);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "M(f(M(i)))",
+                                     ExpectedTokens);
+
+  EXPECT_EQ("M(i)", getSourceText(toks[2], toks[2]));
+}
+
+TEST_F(LexerTest, GetSourceTextExpandsToMaximumInMacroArgumentForEndOfMacro) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "M(M(i) c)",
+                                     ExpectedTokens);
+
+  EXPECT_EQ("M(i)", getSourceText(toks[0], toks[0]));
+}
+
+TEST_F(LexerTest, GetSourceTextExpandsInMacroArgumentForBeginOfMacro) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "M(c c M(i))",
+                                     ExpectedTokens);
+
+  EXPECT_EQ("c M(i)", getSourceText(toks[1], toks[2]));
+}
+
+TEST_F(LexerTest, GetSourceTextExpandsInMacroArgumentForEndOfMacro) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "M(M(i) c c)",
+                                     ExpectedTokens);
+
+  EXPECT_EQ("M(i) c", getSourceText(toks[0], toks[1]));
+}
+
+TEST_F(LexerTest, GetSourceTextInSeparateFnMacros) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "M(c M(i)) M(M(i) c)",
+                                     ExpectedTokens);
+
+  EXPECT_EQ("<INVALID>", getSourceText(toks[1], toks[2]));
+}
+
+TEST_F(LexerTest, GetSourceTextWorksAcrossTokenPastes) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::l_paren);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_paren);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "#define C(x) M(x##c)\n"
+                                     "M(f(C(i)))",
+                                     ExpectedTokens);
+
+  EXPECT_EQ("C(i)", getSourceText(toks[2], toks[2]));
+}
+
+TEST_F(LexerTest, GetSourceTextExpandsAcrossMultipleMacroCalls) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::l_paren);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_paren);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "f(M(M(i)))",
+                                     ExpectedTokens);
+  EXPECT_EQ("M(M(i))", getSourceText(toks[2], toks[2]));
+}
+
+TEST_F(LexerTest, GetSourceTextInMiddleOfMacroArgument) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::l_paren);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_paren);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "M(f(i))",
+                                     ExpectedTokens);
+  EXPECT_EQ("i", getSourceText(toks[2], toks[2]));
+}
+
+TEST_F(LexerTest, GetSourceTextExpandsAroundDifferentMacroCalls) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::l_paren);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_paren);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "#define C(x) x\n"
+                                     "f(C(M(i)))",
+                                     ExpectedTokens);
+  EXPECT_EQ("C(M(i))", getSourceText(toks[2], toks[2]));
+}
+
+TEST_F(LexerTest, GetSourceTextOnlyExpandsIfFirstTokenInMacro) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::l_paren);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_paren);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "#define C(x) c x\n"
+                                     "f(C(M(i)))",
+                                     ExpectedTokens);
+  EXPECT_EQ("M(i)", getSourceText(toks[3], toks[3]));
+}
+
+TEST_F(LexerTest, GetSourceTextExpandsRecursively) {
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::l_paren);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_paren);
+
+  std::vector<Token> toks = CheckLex("#define M(x) x\n"
+                                     "#define C(x) c M(x)\n"
+                                     "C(f(M(i)))",
+                                     ExpectedTokens);
+  EXPECT_EQ("M(i)", getSourceText(toks[3], toks[3]));
+}
 
 TEST_F(LexerTest, LexAPI) {
-  const char *source =
-    "#define M(x) [x]\n"
-    "#define N(x) x\n"
-    "#define INN(x) x\n"
-    "#define NOF1 INN(val)\n"
-    "#define NOF2 val\n"
-    "M(foo) N([bar])\n"
-    "N(INN(val)) N(NOF1) N(NOF2) N(val)";
+  std::vector<tok::TokenKind> ExpectedTokens;
+  ExpectedTokens.push_back(tok::l_square);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_square);
+  ExpectedTokens.push_back(tok::l_square);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::r_square);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
+  ExpectedTokens.push_back(tok::identifier);
 
-  MemoryBuffer *buf = MemoryBuffer::getMemBuffer(source);
-  (void)SourceMgr.createMainFileIDForMemBuffer(buf);
+  std::vector<Token> toks = CheckLex("#define M(x) [x]\n"
+                                     "#define N(x) x\n"
+                                     "#define INN(x) x\n"
+                                     "#define NOF1 INN(val)\n"
+                                     "#define NOF2 val\n"
+                                     "M(foo) N([bar])\n"
+                                     "N(INN(val)) N(NOF1) N(NOF2) N(val)",
+                                     ExpectedTokens);
 
-  VoidModuleLoader ModLoader;
-  HeaderSearch HeaderInfo(FileMgr, Diags, LangOpts, Target.getPtr());
-  Preprocessor PP(Diags, LangOpts,
-                  Target.getPtr(),
-                  SourceMgr, HeaderInfo, ModLoader,
-                  /*IILookup =*/ 0,
-                  /*OwnsHeaderSearch =*/false,
-                  /*DelayInitialization =*/ false);
-  PP.EnterMainSourceFile();
-
-  std::vector<Token> toks;
-  while (1) {
-    Token tok;
-    PP.Lex(tok);
-    if (tok.is(tok::eof))
-      break;
-    toks.push_back(tok);
-  }
-
-  // Make sure we got the tokens that we expected.
-  ASSERT_EQ(10U, toks.size());
-  ASSERT_EQ(tok::l_square, toks[0].getKind());
-  ASSERT_EQ(tok::identifier, toks[1].getKind());
-  ASSERT_EQ(tok::r_square, toks[2].getKind());
-  ASSERT_EQ(tok::l_square, toks[3].getKind());
-  ASSERT_EQ(tok::identifier, toks[4].getKind());
-  ASSERT_EQ(tok::r_square, toks[5].getKind());
-  ASSERT_EQ(tok::identifier, toks[6].getKind());
-  ASSERT_EQ(tok::identifier, toks[7].getKind());
-  ASSERT_EQ(tok::identifier, toks[8].getKind());
-  ASSERT_EQ(tok::identifier, toks[9].getKind());
-  
   SourceLocation lsqrLoc = toks[0].getLocation();
   SourceLocation idLoc = toks[1].getLocation();
   SourceLocation rsqrLoc = toks[2].getLocation();

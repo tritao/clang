@@ -8,21 +8,21 @@
 //===----------------------------------------------------------------------===//
 
 #include "RewriterTestContext.h"
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Tooling/Refactoring.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/DiagnosticOptions.h"
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Rewrite/Core/Rewriter.h"
+#include "clang/Tooling/Refactoring.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Path.h"
@@ -151,6 +151,30 @@ TEST_F(ReplacementTest, ApplyAllFailsIfOneApplyFails) {
   EXPECT_EQ("z", Context.getRewrittenText(IDz));
 }
 
+TEST(ShiftedCodePositionTest, FindsNewCodePosition) {
+  Replacements Replaces;
+  Replaces.insert(Replacement("", 0, 1, ""));
+  Replaces.insert(Replacement("", 4, 3, " "));
+  // Assume ' int   i;' is turned into 'int i;' and cursor is located at '|'.
+  EXPECT_EQ(0u, shiftedCodePosition(Replaces, 0)); // |int   i;
+  EXPECT_EQ(0u, shiftedCodePosition(Replaces, 1)); //  |nt   i;
+  EXPECT_EQ(1u, shiftedCodePosition(Replaces, 2)); //  i|t   i;
+  EXPECT_EQ(2u, shiftedCodePosition(Replaces, 3)); //  in|   i;
+  EXPECT_EQ(3u, shiftedCodePosition(Replaces, 4)); //  int|  i;
+  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 5)); //  int | i;
+  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 6)); //  int  |i;
+  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 7)); //  int   |;
+  EXPECT_EQ(5u, shiftedCodePosition(Replaces, 8)); //  int   i|
+}
+
+TEST(ShiftedCodePositionTest, FindsNewCodePositionWithInserts) {
+  Replacements Replaces;
+  Replaces.insert(Replacement("", 4, 0, "\"\n\""));
+  // Assume '"12345678"' is turned into '"1234"\n"5678"'.
+  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 4)); // "123|5678"
+  EXPECT_EQ(8u, shiftedCodePosition(Replaces, 5)); // "1234|678"
+}
+
 class FlushRewrittenFilesTest : public ::testing::Test {
  public:
   FlushRewrittenFilesTest() {
@@ -166,7 +190,7 @@ class FlushRewrittenFilesTest : public ::testing::Test {
   }
 
   FileID createFile(llvm::StringRef Name, llvm::StringRef Content) {
-    llvm::SmallString<1024> Path(TemporaryDirectory.str());
+    SmallString<1024> Path(TemporaryDirectory.str());
     llvm::sys::path::append(Path, Name);
     std::string ErrorInfo;
     llvm::raw_fd_ostream OutStream(Path.c_str(),
@@ -180,7 +204,7 @@ class FlushRewrittenFilesTest : public ::testing::Test {
   }
 
   std::string getFileContentFromDisk(llvm::StringRef Name) {
-    llvm::SmallString<1024> Path(TemporaryDirectory.str());
+    SmallString<1024> Path(TemporaryDirectory.str());
     llvm::sys::path::append(Path, Name);
     // We need to read directly from the FileManager without relaying through
     // a FileEntry, as otherwise we'd read through an already opened file

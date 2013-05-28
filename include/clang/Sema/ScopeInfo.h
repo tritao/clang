@@ -16,6 +16,7 @@
 #define LLVM_CLANG_SEMA_SCOPE_INFO_H
 
 #include "clang/AST/Type.h"
+#include "clang/Basic/CapturedStmt.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -24,8 +25,12 @@ namespace clang {
 
 class Decl;
 class BlockDecl;
+class CapturedDecl;
 class CXXMethodDecl;
+class FieldDecl;
+class ObjCPropertyDecl;
 class IdentifierInfo;
+class ImplicitParamDecl;
 class LabelDecl;
 class ReturnStmt;
 class Scope;
@@ -34,6 +39,7 @@ class VarDecl;
 class DeclRefExpr;
 class ObjCIvarRefExpr;
 class ObjCPropertyRefExpr;
+class ObjCMessageExpr;
 
 namespace sema {
 
@@ -71,7 +77,8 @@ protected:
   enum ScopeKind {
     SK_Function,
     SK_Block,
-    SK_Lambda
+    SK_Lambda,
+    SK_CapturedRegion
   };
   
 public:
@@ -89,13 +96,13 @@ public:
   /// \brief Whether this function contains any indirect gotos.
   bool HasIndirectGoto;
 
-  /// A flag that is set when parsing a -dealloc method and no [super dealloc]
-  /// call was found yet.
-  bool ObjCShouldCallSuperDealloc;
+  /// \brief Whether a statement was dropped because it was invalid.
+  bool HasDroppedStmt;
 
-  /// A flag that is set when parsing a -finalize method and no [super finalize]
-  /// call was found yet.
-  bool ObjCShouldCallSuperFinalize;
+  /// A flag that is set when parsing a method that must call super's
+  /// implementation, such as \c -dealloc, \c -finalize, or any method marked
+  /// with \c __attribute__((objc_requires_super)).
+  bool ObjCShouldCallSuper;
 
   /// \brief Used to determine if errors occurred in this function or block.
   DiagnosticErrorTrap ErrorTrap;
@@ -166,9 +173,11 @@ public:
 
   public:
     WeakObjectProfileTy(const ObjCPropertyRefExpr *RE);
+    WeakObjectProfileTy(const Expr *Base, const ObjCPropertyDecl *Property);
     WeakObjectProfileTy(const DeclRefExpr *RE);
     WeakObjectProfileTy(const ObjCIvarRefExpr *RE);
 
+    const NamedDecl *getBase() const { return Base.getPointer(); }
     const NamedDecl *getProperty() const { return Property; }
 
     /// Returns true if the object base specifies a known object in memory,
@@ -261,6 +270,9 @@ public:
   template <typename ExprT>
   inline void recordUseOfWeak(const ExprT *E, bool IsRead = true);
 
+  void recordUseOfWeak(const ObjCMessageExpr *Msg,
+                       const ObjCPropertyDecl *Prop);
+
   /// Record that a given expression is a "safe" access of a weak object (e.g.
   /// assigning it to a strong variable.)
   ///
@@ -283,9 +295,14 @@ public:
     HasIndirectGoto = true;
   }
 
+  void setHasDroppedStmt() {
+    HasDroppedStmt = true;
+  }
+
   bool NeedsScopeChecking() const {
-    return HasIndirectGoto ||
-          (HasBranchProtectedScope && HasBranchIntoScope);
+    return !HasDroppedStmt &&
+        (HasIndirectGoto ||
+          (HasBranchProtectedScope && HasBranchIntoScope));
   }
   
   FunctionScopeInfo(DiagnosticsEngine &Diag)
@@ -293,8 +310,8 @@ public:
       HasBranchProtectedScope(false),
       HasBranchIntoScope(false),
       HasIndirectGoto(false),
-      ObjCShouldCallSuperDealloc(false),
-      ObjCShouldCallSuperFinalize(false),
+      HasDroppedStmt(false),
+      ObjCShouldCallSuper(false),
       ErrorTrap(Diag) { }
 
   virtual ~FunctionScopeInfo();
@@ -302,73 +319,105 @@ public:
   /// \brief Clear out the information in this function scope, making it
   /// suitable for reuse.
   void Clear();
-
-  static bool classof(const FunctionScopeInfo *FSI) { return true; }
 };
 
 class CapturingScopeInfo : public FunctionScopeInfo {
 public:
   enum ImplicitCaptureStyle {
-    ImpCap_None, ImpCap_LambdaByval, ImpCap_LambdaByref, ImpCap_Block
+    ImpCap_None, ImpCap_LambdaByval, ImpCap_LambdaByref, ImpCap_Block,
+    ImpCap_CapturedRegion
   };
 
   ImplicitCaptureStyle ImpCaptureStyle;
 
   class Capture {
-    // There are two categories of capture: capturing 'this', and capturing
-    // local variables.  There are three ways to capture a local variable:
-    // capture by copy in the C++11 sense, capture by reference
-    // in the C++11 sense, and __block capture.  Lambdas explicitly specify
-    // capture by copy or capture by reference.  For blocks, __block capture
-    // applies to variables with that annotation, variables of reference type
-    // are captured by reference, and other variables are captured by copy.
+    // There are three categories of capture: capturing 'this', capturing
+    // local variables, and C++1y initialized captures (which can have an
+    // arbitrary initializer, and don't really capture in the traditional
+    // sense at all).
+    //
+    // There are three ways to capture a local variable:
+    //  - capture by copy in the C++11 sense,
+    //  - capture by reference in the C++11 sense, and
+    //  - __block capture.
+    // Lambdas explicitly specify capture by copy or capture by reference.
+    // For blocks, __block capture applies to variables with that annotation,
+    // variables of reference type are captured by reference, and other
+    // variables are captured by copy.
     enum CaptureKind {
-      Cap_This, Cap_ByCopy, Cap_ByRef, Cap_Block
+      Cap_ByCopy, Cap_ByRef, Cap_Block, Cap_ThisOrInit
     };
 
-    // The variable being captured (if we are not capturing 'this'),
-    // and misc bits descibing the capture.
-    llvm::PointerIntPair<VarDecl*, 2, CaptureKind> VarAndKind;
+    // The variable being captured (if we are not capturing 'this', and whether
+    // this is a nested capture; the expression is only required if we are
+    // capturing ByVal and the variable's type has a non-trivial copy
+    // constructor, or for an initialized capture.
+    typedef llvm::PointerIntPair<VarDecl*, 1, bool> VarAndNested;
 
-    // Expression to initialize a field of the given type, and whether this
-    // is a nested capture; the expression is only required if we are
-    // capturing ByVal and the variable's type has a non-trivial
-    // copy constructor.
-    llvm::PointerIntPair<Expr*, 1, bool> CopyExprAndNested;
+    // The variable being captured, or the implicitly-generated field for
+    // an init-capture.
+    llvm::PointerUnion<VarAndNested, FieldDecl*> VarOrField;
 
-    /// \brief The source location at which the first capture occurred..
+    // Expression to initialize a field of the given type, and the kind of
+    // capture (if this is a capture and not an init-capture).
+    llvm::PointerIntPair<Expr*, 2, CaptureKind> InitExprAndCaptureKind;
+
+    /// \brief The source location at which the first capture occurred.
     SourceLocation Loc;
-    
+
     /// \brief The location of the ellipsis that expands a parameter pack.
     SourceLocation EllipsisLoc;
-    
+
     /// \brief The type as it was captured, which is in effect the type of the
     /// non-static data member that would hold the capture.
     QualType CaptureType;
-    
+
   public:
-    Capture(VarDecl *Var, bool block, bool byRef, bool isNested, 
-            SourceLocation Loc, SourceLocation EllipsisLoc, 
+    Capture(VarDecl *Var, bool Block, bool ByRef, bool IsNested,
+            SourceLocation Loc, SourceLocation EllipsisLoc,
             QualType CaptureType, Expr *Cpy)
-      : VarAndKind(Var, block ? Cap_Block : byRef ? Cap_ByRef : Cap_ByCopy),
-        CopyExprAndNested(Cpy, isNested), Loc(Loc), EllipsisLoc(EllipsisLoc),
-        CaptureType(CaptureType){}
+        : VarOrField(VarAndNested(Var, IsNested)),
+          InitExprAndCaptureKind(Cpy, Block ? Cap_Block :
+                                      ByRef ? Cap_ByRef : Cap_ByCopy),
+          Loc(Loc), EllipsisLoc(EllipsisLoc), CaptureType(CaptureType) {}
 
     enum IsThisCapture { ThisCapture };
-    Capture(IsThisCapture, bool isNested, SourceLocation Loc, 
+    Capture(IsThisCapture, bool IsNested, SourceLocation Loc,
             QualType CaptureType, Expr *Cpy)
-      : VarAndKind(0, Cap_This), CopyExprAndNested(Cpy, isNested), Loc(Loc),
-        EllipsisLoc(), CaptureType(CaptureType) { }
+        : VarOrField(VarAndNested(0, IsNested)),
+          InitExprAndCaptureKind(Cpy, Cap_ThisOrInit),
+          Loc(Loc), EllipsisLoc(), CaptureType(CaptureType) {}
 
-    bool isThisCapture() const { return VarAndKind.getInt() == Cap_This; }
-    bool isVariableCapture() const { return !isThisCapture(); }
-    bool isCopyCapture() const { return VarAndKind.getInt() == Cap_ByCopy; }
-    bool isReferenceCapture() const { return VarAndKind.getInt() == Cap_ByRef; }
-    bool isBlockCapture() const { return VarAndKind.getInt() == Cap_Block; }
-    bool isNested() { return CopyExprAndNested.getInt(); }
+    Capture(FieldDecl *Field, Expr *Init)
+        : VarOrField(Field), InitExprAndCaptureKind(Init, Cap_ThisOrInit),
+          Loc(), EllipsisLoc(), CaptureType() {}
+
+    bool isThisCapture() const {
+      return InitExprAndCaptureKind.getInt() == Cap_ThisOrInit &&
+             VarOrField.is<VarAndNested>();
+    }
+    bool isVariableCapture() const {
+      return InitExprAndCaptureKind.getInt() != Cap_ThisOrInit;
+    }
+    bool isInitCapture() const {
+      return VarOrField.is<FieldDecl*>();
+    }
+    bool isCopyCapture() const {
+      return InitExprAndCaptureKind.getInt() == Cap_ByCopy;
+    }
+    bool isReferenceCapture() const {
+      return InitExprAndCaptureKind.getInt() == Cap_ByRef;
+    }
+    bool isBlockCapture() const {
+      return InitExprAndCaptureKind.getInt() == Cap_Block;
+    }
+    bool isNested() { return VarOrField.dyn_cast<VarAndNested>().getInt(); }
 
     VarDecl *getVariable() const {
-      return VarAndKind.getPointer();
+      return VarOrField.dyn_cast<VarAndNested>().getPointer();
+    }
+    FieldDecl *getInitCaptureField() const {
+      return VarOrField.dyn_cast<FieldDecl*>();
     }
     
     /// \brief Retrieve the location at which this variable was captured.
@@ -383,8 +432,8 @@ public:
     /// that would store this capture.
     QualType getCaptureType() const { return CaptureType; }
     
-    Expr *getCopyExpr() const {
-      return CopyExprAndNested.getPointer();
+    Expr *getInitExpr() const {
+      return InitExprAndCaptureKind.getPointer();
     }
   };
 
@@ -420,10 +469,10 @@ public:
   }
 
   void addThisCapture(bool isNested, SourceLocation Loc, QualType CaptureType,
-                      Expr *Cpy) {
-    Captures.push_back(Capture(Capture::ThisCapture, isNested, Loc, CaptureType,
-                               Cpy));
-    CXXThisCaptureIndex = Captures.size();
+                      Expr *Cpy);
+
+  void addInitCapture(FieldDecl *Field, Expr *Init) {
+    Captures.push_back(Capture(Field, Init));
   }
 
   /// \brief Determine whether the C++ 'this' is captured.
@@ -455,9 +504,9 @@ public:
   }
 
   static bool classof(const FunctionScopeInfo *FSI) { 
-    return FSI->Kind == SK_Block || FSI->Kind == SK_Lambda; 
+    return FSI->Kind == SK_Block || FSI->Kind == SK_Lambda
+                                 || FSI->Kind == SK_CapturedRegion;
   }
-  static bool classof(const CapturingScopeInfo *BSI) { return true; }
 };
 
 /// \brief Retains information about a block that is currently being parsed.
@@ -485,7 +534,46 @@ public:
   static bool classof(const FunctionScopeInfo *FSI) { 
     return FSI->Kind == SK_Block; 
   }
-  static bool classof(const BlockScopeInfo *BSI) { return true; }
+};
+
+/// \brief Retains information about a captured region.
+class CapturedRegionScopeInfo: public CapturingScopeInfo {
+public:
+  /// \brief The CapturedDecl for this statement.
+  CapturedDecl *TheCapturedDecl;
+  /// \brief The captured record type.
+  RecordDecl *TheRecordDecl;
+  /// \brief This is the enclosing scope of the captured region.
+  Scope *TheScope;
+  /// \brief The implicit parameter for the captured variables.
+  ImplicitParamDecl *ContextParam;
+  /// \brief The kind of captured region.
+  CapturedRegionKind CapRegionKind;
+
+  CapturedRegionScopeInfo(DiagnosticsEngine &Diag, Scope *S, CapturedDecl *CD,
+                          RecordDecl *RD, ImplicitParamDecl *Context,
+                          CapturedRegionKind K)
+    : CapturingScopeInfo(Diag, ImpCap_CapturedRegion),
+      TheCapturedDecl(CD), TheRecordDecl(RD), TheScope(S),
+      ContextParam(Context), CapRegionKind(K)
+  {
+    Kind = SK_CapturedRegion;
+  }
+
+  virtual ~CapturedRegionScopeInfo();
+
+  /// \brief A descriptive name for the kind of captured region this is.
+  StringRef getRegionName() const {
+    switch (CapRegionKind) {
+    case CR_Default:
+      return "default captured statement";
+    }
+    llvm_unreachable("Invalid captured region kind!");
+  }
+
+  static bool classof(const FunctionScopeInfo *FSI) {
+    return FSI->Kind == SK_CapturedRegion;
+  }
 };
 
 class LambdaScopeInfo : public CapturingScopeInfo {
@@ -516,11 +604,11 @@ public:
   bool ContainsUnexpandedParameterPack;
 
   /// \brief Variables used to index into by-copy array captures.
-  llvm::SmallVector<VarDecl *, 4> ArrayIndexVars;
+  SmallVector<VarDecl *, 4> ArrayIndexVars;
 
   /// \brief Offsets into the ArrayIndexVars array at which each capture starts
   /// its list of array index variables.
-  llvm::SmallVector<unsigned, 4> ArrayIndexStarts;
+  SmallVector<unsigned, 4> ArrayIndexStarts;
   
   LambdaScopeInfo(DiagnosticsEngine &Diag, CXXRecordDecl *Lambda,
                   CXXMethodDecl *CallOperator)
@@ -537,13 +625,12 @@ public:
   void finishedExplicitCaptures() {
     NumExplicitCaptures = Captures.size();
   }
-  
-  static bool classof(const FunctionScopeInfo *FSI) { 
+
+  static bool classof(const FunctionScopeInfo *FSI) {
     return FSI->Kind == SK_Lambda; 
   }
-  static bool classof(const LambdaScopeInfo *BSI) { return true; }
-
 };
+
 
 FunctionScopeInfo::WeakObjectProfileTy::WeakObjectProfileTy()
   : Base(0, false), Property(0) {}
@@ -560,6 +647,17 @@ void FunctionScopeInfo::recordUseOfWeak(const ExprT *E, bool IsRead) {
   assert(E);
   WeakUseVector &Uses = WeakObjectUses[WeakObjectProfileTy(E)];
   Uses.push_back(WeakUseTy(E, IsRead));
+}
+
+inline void
+CapturingScopeInfo::addThisCapture(bool isNested, SourceLocation Loc,
+                                   QualType CaptureType, Expr *Cpy) {
+  Captures.push_back(Capture(Capture::ThisCapture, isNested, Loc, CaptureType,
+                             Cpy));
+  CXXThisCaptureIndex = Captures.size();
+
+  if (LambdaScopeInfo *LSI = dyn_cast<LambdaScopeInfo>(this))
+    LSI->ArrayIndexStarts.push_back(LSI->ArrayIndexVars.size());
 }
 
 } // end namespace sema

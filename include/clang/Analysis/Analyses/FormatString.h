@@ -49,7 +49,7 @@ public:
   const char *toString() const { return representation; }
 
   // Overloaded operators for bool like qualities
-  operator bool() const { return flag; }
+  LLVM_EXPLICIT operator bool() const { return flag; }
   OptionalFlag& operator=(const bool &rhs) {
     flag = rhs;
     return *this;  // Return a reference to myself.
@@ -201,7 +201,7 @@ public:
 
   bool isPrintfKind() const { return IsPrintf; }
   
-  llvm::Optional<ConversionSpecifier> getStandardSpecifier() const;
+  Optional<ConversionSpecifier> getStandardSpecifier() const;
 
 protected:
   bool IsPrintf;
@@ -361,7 +361,7 @@ public:
 
   bool hasStandardLengthModifier() const;
 
-  llvm::Optional<LengthModifier> getCorrectedLengthModifier() const;
+  Optional<LengthModifier> getCorrectedLengthModifier() const;
 
   bool hasStandardConversionSpecifier(const LangOptions &LangOpt) const;
 

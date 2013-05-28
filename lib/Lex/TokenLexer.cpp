@@ -12,11 +12,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Lex/TokenLexer.h"
-#include "MacroArgs.h"
-#include "clang/Lex/MacroInfo.h"
-#include "clang/Lex/Preprocessor.h"
+#include "clang/Lex/MacroArgs.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/LexDiagnostic.h"
+#include "clang/Lex/MacroInfo.h"
+#include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/SmallString.h"
 using namespace clang;
 
@@ -119,6 +119,55 @@ void TokenLexer::destroy() {
   if (ActualArgs) ActualArgs->destroy(PP);
 }
 
+/// Remove comma ahead of __VA_ARGS__, if present, according to compiler dialect
+/// settings.  Returns true if the comma is removed.
+static bool MaybeRemoveCommaBeforeVaArgs(SmallVector<Token, 128> &ResultToks,
+                                         bool &NextTokGetsSpace,
+                                         bool HasPasteOperator,
+                                         MacroInfo *Macro, unsigned MacroArgNo,
+                                         Preprocessor &PP) {
+  // Is the macro argument __VA_ARGS__?
+  if (!Macro->isVariadic() || MacroArgNo != Macro->getNumArgs()-1)
+    return false;
+
+  // In Microsoft-compatibility mode, a comma is removed in the expansion
+  // of " ... , __VA_ARGS__ " if __VA_ARGS__ is empty.  This extension is
+  // not supported by gcc.
+  if (!HasPasteOperator && !PP.getLangOpts().MicrosoftMode)
+    return false;
+
+  // GCC removes the comma in the expansion of " ... , ## __VA_ARGS__ " if
+  // __VA_ARGS__ is empty, but not in strict C99 mode where there are no
+  // named arguments, where it remains.  In all other modes, including C99
+  // with GNU extensions, it is removed regardless of named arguments.
+  // Microsoft also appears to support this extension, unofficially.
+  if (PP.getLangOpts().C99 && !PP.getLangOpts().GNUMode
+        && Macro->getNumArgs() < 2)
+    return false;
+
+  // Is a comma available to be removed?
+  if (ResultToks.empty() || !ResultToks.back().is(tok::comma))
+    return false;
+
+  // Issue an extension diagnostic for the paste operator.
+  if (HasPasteOperator)
+    PP.Diag(ResultToks.back().getLocation(), diag::ext_paste_comma);
+
+  // Remove the comma.
+  ResultToks.pop_back();
+
+  // If the comma was right after another paste (e.g. "X##,##__VA_ARGS__"),
+  // then removal of the comma should produce a placemarker token (in C99
+  // terms) which we model by popping off the previous ##, giving us a plain
+  // "X" when __VA_ARGS__ is empty.
+  if (!ResultToks.empty() && ResultToks.back().is(tok::hashhash))
+    ResultToks.pop_back();
+
+  // Never add a space, even if the comma, ##, or arg had a space.
+  NextTokGetsSpace = false;
+  return true;
+}
+
 /// Expand the arguments of a function-like macro so that we can quickly
 /// return preexpanded tokens from Tokens.
 void TokenLexer::ExpandFunctionArguments() {
@@ -195,9 +244,19 @@ void TokenLexer::ExpandFunctionArguments() {
 
     // Otherwise, this is a use of the argument.  Find out if there is a paste
     // (##) operator before or after the argument.
-    bool PasteBefore =
+    bool NonEmptyPasteBefore =
       !ResultToks.empty() && ResultToks.back().is(tok::hashhash);
+    bool PasteBefore = i != 0 && Tokens[i-1].is(tok::hashhash);
     bool PasteAfter = i+1 != e && Tokens[i+1].is(tok::hashhash);
+    assert(!NonEmptyPasteBefore || PasteBefore);
+
+    // In Microsoft mode, remove the comma before __VA_ARGS__ to ensure there
+    // are no trailing commas if __VA_ARGS__ is empty.
+    if (!PasteBefore && ActualArgs->isVarargsElidedUse() &&
+        MaybeRemoveCommaBeforeVaArgs(ResultToks, NextTokGetsSpace,
+                                     /*HasPasteOperator=*/false,
+                                     Macro, ArgNo, PP))
+      continue;
 
     // If it is not the LHS/RHS of a ## operator, we must pre-expand the
     // argument and substitute the expanded tokens into the result.  This is
@@ -257,7 +316,7 @@ void TokenLexer::ExpandFunctionArguments() {
       // that __VA_ARGS__ expands to multiple tokens, avoid a pasting error when
       // the expander trys to paste ',' with the first token of the __VA_ARGS__
       // expansion.
-      if (PasteBefore && ResultToks.size() >= 2 &&
+      if (NonEmptyPasteBefore && ResultToks.size() >= 2 &&
           ResultToks[ResultToks.size()-2].is(tok::comma) &&
           (unsigned)ArgNo == Macro->getNumArgs()-1 &&
           Macro->isVariadic()) {
@@ -293,7 +352,7 @@ void TokenLexer::ExpandFunctionArguments() {
       // case, we do not want the extra whitespace to be added.  For example,
       // we want ". ## foo" -> ".foo" not ". foo".
       if ((CurTok.hasLeadingSpace() || NextTokGetsSpace) &&
-          !PasteBefore)
+          !NonEmptyPasteBefore)
         ResultToks[ResultToks.size()-NumToks].setFlag(Token::LeadingSpace);
 
       NextTokGetsSpace = false;
@@ -314,30 +373,24 @@ void TokenLexer::ExpandFunctionArguments() {
     }
 
     // If this is on the RHS of a paste operator, we've already copied the
-    // paste operator to the ResultToks list.  Remove it.
-    assert(PasteBefore && ResultToks.back().is(tok::hashhash));
-    NextTokGetsSpace |= ResultToks.back().hasLeadingSpace();
-    ResultToks.pop_back();
+    // paste operator to the ResultToks list, unless the LHS was empty too.
+    // Remove it.
+    assert(PasteBefore);
+    if (NonEmptyPasteBefore) {
+      assert(ResultToks.back().is(tok::hashhash));
+      NextTokGetsSpace |= ResultToks.back().hasLeadingSpace();
+      ResultToks.pop_back();
+    }
 
     // If this is the __VA_ARGS__ token, and if the argument wasn't provided,
     // and if the macro had at least one real argument, and if the token before
-    // the ## was a comma, remove the comma.
-    if ((unsigned)ArgNo == Macro->getNumArgs()-1 && // is __VA_ARGS__
-        ActualArgs->isVarargsElidedUse() &&       // Argument elided.
-        !ResultToks.empty() && ResultToks.back().is(tok::comma)) {
-      // Never add a space, even if the comma, ##, or arg had a space.
-      NextTokGetsSpace = false;
-      // Remove the paste operator, report use of the extension.
-      PP.Diag(ResultToks.back().getLocation(), diag::ext_paste_comma);
-      ResultToks.pop_back();
-      
-      // If the comma was right after another paste (e.g. "X##,##__VA_ARGS__"),
-      // then removal of the comma should produce a placemarker token (in C99
-      // terms) which we model by popping off the previous ##, giving us a plain
-      // "X" when __VA_ARGS__ is empty.
-      if (!ResultToks.empty() && ResultToks.back().is(tok::hashhash))
-        ResultToks.pop_back();
-    }
+    // the ## was a comma, remove the comma.  This is a GCC extension which is
+    // disabled when using -std=c99.
+    if (ActualArgs->isVarargsElidedUse())
+      MaybeRemoveCommaBeforeVaArgs(ResultToks, NextTokGetsSpace,
+                                   /*HasPasteOperator=*/true,
+                                   Macro, ArgNo, PP);
+
     continue;
   }
 
@@ -600,6 +653,12 @@ bool TokenLexer::PasteTokens(Token &Tok) {
     StartLoc = getExpansionLocForMacroDefLoc(StartLoc);
   if (EndLoc.isFileID())
     EndLoc = getExpansionLocForMacroDefLoc(EndLoc);
+  FileID MacroFID = SM.getFileID(MacroExpansionStart);
+  while (SM.getFileID(StartLoc) != MacroFID)
+    StartLoc = SM.getImmediateExpansionRange(StartLoc).first;
+  while (SM.getFileID(EndLoc) != MacroFID)
+    EndLoc = SM.getImmediateExpansionRange(EndLoc).second;
+    
   Tok.setLocation(SM.createExpansionLoc(Tok.getLocation(), StartLoc, EndLoc,
                                         Tok.getLength()));
 
@@ -696,14 +755,18 @@ static void updateConsecutiveMacroArgTokens(SourceManager &SM,
 
   Token *NextTok = begin_tokens + 1;
   for (; NextTok < end_tokens; ++NextTok) {
+    SourceLocation NextLoc = NextTok->getLocation();
+    if (CurLoc.isFileID() != NextLoc.isFileID())
+      break; // Token from different kind of FileID.
+
     int RelOffs;
-    if (!SM.isInSameSLocAddrSpace(CurLoc, NextTok->getLocation(), &RelOffs))
+    if (!SM.isInSameSLocAddrSpace(CurLoc, NextLoc, &RelOffs))
       break; // Token from different local/loaded location.
     // Check that token is not before the previous token or more than 50
     // "characters" away.
     if (RelOffs < 0 || RelOffs > 50)
       break;
-    CurLoc = NextTok->getLocation();
+    CurLoc = NextLoc;
   }
 
   // For the consecutive tokens, find the length of the SLocEntry to contain

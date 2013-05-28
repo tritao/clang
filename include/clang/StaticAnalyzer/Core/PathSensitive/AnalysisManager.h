@@ -42,7 +42,7 @@ class AnalysisManager : public BugReporterData {
   CheckerManager *CheckerMgr;
 
 public:
-  const AnalyzerOptions &options;
+  AnalyzerOptions &options;
   
   AnalysisManager(ASTContext &ctx,DiagnosticsEngine &diags,
                   const LangOptions &lang,
@@ -50,7 +50,7 @@ public:
                   StoreManagerCreator storemgr,
                   ConstraintManagerCreator constraintmgr, 
                   CheckerManager *checkerMgr,
-                  const AnalyzerOptions &Options);
+                  AnalyzerOptions &Options);
 
   ~AnalysisManager();
   
@@ -64,6 +64,10 @@ public:
 
   StoreManagerCreator getStoreManagerCreator() {
     return CreateStoreMgr;
+  }
+  
+  AnalyzerOptions& getAnalyzerOptions() {
+    return options;
   }
 
   ConstraintManagerCreator getConstraintManagerCreator() {
@@ -100,7 +104,7 @@ public:
   }
 
   bool shouldInlineCall() const {
-    return options.IPAMode != None;
+    return options.getIPAMode() != IPAK_None;
   }
 
   CFG *getCFG(Decl const *D) {

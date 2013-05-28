@@ -136,7 +136,7 @@ void __both3(void) {}
 void __a1(void) __attribute((noinline));
 #pragma weak a1 = __a1
 void __a1(void) {}
-// CHECK: define void @__a1() {{.*}} noinline
+// CHECK: define void @__a1() [[NI:#[0-9]+]]
 
 // attributes introduced BEFORE a combination of #pragma weak and alias()
 // hold...
@@ -144,17 +144,26 @@ void __a3(void) __attribute((noinline));
 #pragma weak a3 = __a3
 void a3(void) __attribute((alias("__a3")));
 void __a3(void) {}
-// CHECK: define void @__a3() {{.*}} noinline
+// CHECK: define void @__a3() [[NI]]
 
 #pragma weak xxx = __xxx
 __attribute((pure,noinline,const,fastcall)) void __xxx(void) { }
-// CHECK: void @__xxx() {{.*}} noinline
+// CHECK: void @__xxx() [[RN:#[0-9]+]]
 
 ///////////// PR10878: Make sure we can call a weak alias
 void SHA512Pad(void *context) {}
 #pragma weak SHA384Pad = SHA512Pad
 void PR10878() { SHA384Pad(0); }
 // CHECK: call void @SHA384Pad(i8* null)
+
+
+// PR14046: Parse #pragma weak in function-local context
+extern int PR14046e(void);
+void PR14046f() {
+#pragma weak PR14046e
+  PR14046e();
+}
+// CHECK: declare extern_weak i32 @PR14046e()
 
 
 ///////////// TODO: stuff that still doesn't work
@@ -170,3 +179,6 @@ void zzz(void){}
 // CHECK: define void @yyy()
 
 int correct_linkage;
+
+// CHECK: attributes [[NI]] = { noinline nounwind{{.*}} }
+// CHECK: attributes [[RN]] = { noinline nounwind readnone{{.*}} }

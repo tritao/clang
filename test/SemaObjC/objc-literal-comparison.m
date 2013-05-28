@@ -2,6 +2,10 @@
 // RUN: %clang_cc1 -fsyntax-only -Wno-everything -Wobjc-literal-compare "-Dnil=(id)0" -verify %s
 // RUN: %clang_cc1 -fsyntax-only -Wno-everything -Wobjc-literal-compare "-Dnil=0" -verify %s
 
+// RUN: %clang_cc1 -fsyntax-only -Wno-everything -Wobjc-literal-compare -fobjc-arc "-Dnil=((id)0)" -verify %s
+// RUN: %clang_cc1 -fsyntax-only -Wno-everything -Wobjc-literal-compare -fobjc-arc "-Dnil=(id)0" -verify %s
+// RUN: %clang_cc1 -fsyntax-only -Wno-everything -Wobjc-literal-compare -fobjc-arc "-Dnil=0" -verify %s
+
 // (test the warning flag as well)
 
 typedef signed char BOOL;
@@ -94,3 +98,6 @@ void testNilComparison() {
   RETURN_IF_NIL(@(1+1));
 }
 
+void PR15257(Class c) {
+  return c == @""; // expected-warning{{direct comparison of a string literal has undefined behavior}}
+}
