@@ -3072,15 +3072,16 @@ static void TryConstructorInitialization(Sema &S,
   //    - if T is a C++/CLI value class type, then we have to perform either
   // zero or copy-initialization.
   if (DestRecordType->isCLIValueType()) {
-    if (NumArgs == 0) {
+    if (Args.size() == 0) {
       // "every value class implicitly has a parameterless instance constructor,
       // which always returns the value that results from setting all value type
       // fields to their default value and all handle type fields to nullptr."
       Sequence.AddCLIValueZeroInitializationStep(Entity.getType());
       return;
-    } else if (NumArgs == 1 && Args[0]->getType()->isCLIValueType()) {
+    } else if (Args.size() == 1 && Args[0]->getType()->isCLIValueType()) {
       // "The copy construction semantics of a value class are always to bitwise
       // copy all members of the value class"
+      // FIXME: Check if the arg is compatible with dest value type
       Sequence.AddCLIValueCopyInitializationStep(Entity.getType(), Args[0]);
       return;
     }

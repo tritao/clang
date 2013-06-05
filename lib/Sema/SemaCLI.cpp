@@ -55,8 +55,8 @@ static NamespaceDecl *findCreateNamespace(Sema &S, DeclContext *DC,
   IdentifierInfo *II = getIdentifier(S, Namespace);
   DeclContextLookupResult Res = DC->lookup(DeclarationName(II));
 
-  for (; Res.first != Res.second; ++Res.first) {
-    if (NamespaceDecl *ND = dyn_cast<NamespaceDecl>(*Res.first)) {
+  for (auto it = Res.begin(); it != Res.end(); ++it) {
+    if (NamespaceDecl *ND = dyn_cast<NamespaceDecl>(*it)) {
       return ND;
     }
   }
@@ -183,8 +183,8 @@ static CXXMethodDecl *findCreateMethod(Sema &S, MethodDefinition ^Method,
   
   unsigned MetadataToken = Method->MetadataToken.ToUInt32();
   DeclContextLookupResult Res = RD->lookup(DN);
-  for (; Res.first != Res.second; ++Res.first) {
-    Decl *D = *Res.first;
+  for (auto it = Res.begin(); it != Res.end(); ++it) {
+    Decl *D = *it;
     if (CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(D)) {
       CLIMethodData *CLIData = MD->getCLIData();
       if (CLIData->MetadataToken == MetadataToken)
@@ -216,11 +216,10 @@ static CXXMethodDecl *findCreateMethod(Sema &S, MethodDefinition ^Method,
     Info.Variadic = true;
   }
 
-  QualType FT = C.getFunctionType(RT, ParamTypes.data(), ParamTypes.size(),
-    Info);
+  QualType FT = C.getFunctionType(RT, ParamTypes, Info);
 
   TypeSourceInfo *TSI = C.getTrivialTypeSourceInfo(FT);
-  FunctionProtoTypeLoc FTL = cast<FunctionProtoTypeLoc>(TSI->getTypeLoc());
+  FunctionProtoTypeLoc FTL = TSI->getTypeLoc().castAs<FunctionProtoTypeLoc>();
   DeclarationNameInfo DNI(DN, SourceLocation());
 
   CXXMethodDecl *MD = 0;
@@ -232,7 +231,7 @@ static CXXMethodDecl *findCreateMethod(Sema &S, MethodDefinition ^Method,
       /*IsConstexpr=*/false);
   } else {
     MD = CXXMethodDecl::Create(C, RD, SourceLocation(), DNI, FT, TSI,
-      /*IsStatic=*/Method->IsStatic, SC_None, /*IsInline=*/false,
+      Method->IsStatic ? SC_Static : SC_None, /*IsInline=*/false,
       /*IsConstexpr=*/false, SourceLocation());
   }
 
@@ -255,7 +254,7 @@ static CXXMethodDecl *findCreateMethod(Sema &S, MethodDefinition ^Method,
     ParmVarDecl *PVD = ParmVarDecl::Create(C, MD, SourceLocation(),
       SourceLocation(), &PII, ParamType,
       C.getTrivialTypeSourceInfo(ParamType),
-      SC_Auto, SC_Auto, 0);
+      SC_Auto, 0);
     
     assert(PVD && "Expected a valid parameter decl");
     PVD->setScopeInfo(0, paramIndex);
@@ -298,7 +297,7 @@ static DeclaratorDecl *createField(Sema &S, FieldDefinition ^Field,
 
   if (Field->IsStatic) {
     DD = VarDecl::Create(C, RD, SourceLocation(), SourceLocation(), &II,
-      FT, TSI, SC_Static, SC_Static);
+      FT, TSI, SC_Static);
   } else {
     DD = FieldDecl::Create(C, RD, SourceLocation(), SourceLocation(), &II,
       FT, TSI, 0, 0, ICIS_NoInit);
@@ -560,17 +559,16 @@ static void createClassImplicitOperator(Sema &S, TypeDefinition ^TypeDef,
   QualType ReturnTy = C.BoolTy;
 
   FunctionProtoType::ExtProtoInfo Info;
-  QualType FunctionTy = C.getFunctionType(ReturnTy, ParamTypes.data(),
-    ParamTypes.size(), Info);
+  QualType FunctionTy = C.getFunctionType(ReturnTy, ParamTypes, Info);
 
   TypeSourceInfo *TSI = C.getTrivialTypeSourceInfo(FunctionTy);
-  FunctionProtoTypeLoc FTL = cast<FunctionProtoTypeLoc>(TSI->getTypeLoc());
+  FunctionProtoTypeLoc FTL = TSI->getTypeLoc().castAs<FunctionProtoTypeLoc>();
 
   DeclarationName DN = C.DeclarationNames.getCXXOperatorName(Op);
   DeclarationNameInfo DNI(DN, SourceLocation());
 
   CXXMethodDecl *MD = CXXMethodDecl::Create(C, RD, SourceLocation(),
-    DNI, FunctionTy, TSI, /*IsStatic=*/false, SC_Auto, /*IsInline=*/false,
+    DNI, FunctionTy, TSI, SC_Auto, /*IsInline=*/false,
     /*IsConstexpr=*/false, SourceLocation());
 
   MD->setImplicit(true);
@@ -587,7 +585,7 @@ static void createClassImplicitOperator(Sema &S, TypeDefinition ^TypeDef,
     QualType ParamType = ClassTy;
     ParmVarDecl *PVD = ParmVarDecl::Create(C, MD, SourceLocation(),
       SourceLocation(), &PII, ParamType,
-      C.getTrivialTypeSourceInfo(ParamType), SC_Auto, SC_Auto, 0);
+      C.getTrivialTypeSourceInfo(ParamType), SC_Auto, 0);
     
     assert(PVD && "Expected a valid parameter decl");
     PVD->setScopeInfo(0, i);
@@ -633,8 +631,8 @@ static CXXRecordDecl * findCreateClassDecl(Sema &S, TypeDefinition ^TypeDef) {
   IdentifierInfo *II = getIdentifier(S, TypeDef->Name);
   DeclContextLookupResult Res = NS->lookup(II);
 
-  for (; Res.first != Res.second; ++Res.first) {
-    Decl *D = *Res.first;
+  for (auto it = Res.begin(); it != Res.end(); ++it) {
+    Decl *D = *it;
     if (CLIRecordDecl *RD = dyn_cast<CLIRecordDecl>(D)) {
       return RD;
     } else if (ClassTemplateDecl *CTD = dyn_cast<ClassTemplateDecl>(D)) {

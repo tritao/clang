@@ -59,20 +59,6 @@ namespace clang {
     TST_typename,     // Typedef, C++ class-name or enum name, etc.
     TST_typeofType,
     TST_typeofExpr,
-<<<<<<< HEAD
-    TST_decltype,     // C++0x decltype
-    TST_underlyingType, // __underlying_type for C++0x
-    TST_auto,         // C++0x auto
-    TST_unknown_anytype, // __unknown_anytype extension
-    TST_atomic,       // C11 _Atomic
-    // C++/CX extended types
-    TST_ref_class,
-    TST_ref_struct,
-    TST_value_class,
-    TST_value_struct,
-    TST_interface_class,
-    TST_interface_struct,
-=======
     TST_decltype,         // C++11 decltype
     TST_underlyingType,   // __underlying_type for C++11
     TST_auto,             // C++11 auto
@@ -87,7 +73,13 @@ namespace clang {
     TST_image3d_t,        // OpenCL image3d_t
     TST_sampler_t,        // OpenCL sampler_t
     TST_event_t,          // OpenCL event_t
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
+    // C++/CX extended types
+    TST_ref_class,
+    TST_ref_struct,
+    TST_value_class,
+    TST_value_struct,
+    TST_interface_class,
+    TST_interface_struct,
     TST_error         // erroneous type
   };
   

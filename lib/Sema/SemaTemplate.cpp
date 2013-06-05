@@ -9,15 +9,6 @@
 //  This file implements semantic analysis for C++ templates.
 //===----------------------------------------------------------------------===/
 
-<<<<<<< HEAD
-#include "clang/Sema/SemaInternal.h"
-#include "clang/Sema/Lookup.h"
-#include "clang/Sema/Scope.h"
-#include "clang/Sema/Template.h"
-#include "clang/Sema/TemplateDeduction.h"
-#include "clang/Sema/SemaCLI.h"
-=======
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
 #include "TreeTransform.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclFriend.h"
@@ -32,6 +23,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"

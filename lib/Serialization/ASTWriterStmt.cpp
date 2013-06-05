@@ -1350,7 +1350,7 @@ void ASTStmtWriter::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
   VisitExpr(E);
   Record.push_back(E->StoredInitializationStyle);
   Writer.AddTypeSourceInfo(E->getAllocatedTypeSourceInfo(), Record);
-  Writer.AddSourceLocation(E->getStartLoc(), Record);
+  Writer.AddSourceLocation(E->getLocStart(), Record);
   Writer.AddSourceRange(E->getDirectInitRange(), Record);
   Code = serialization::EXPR_CLI_GCNEW;
 }

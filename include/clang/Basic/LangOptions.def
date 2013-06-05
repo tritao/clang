@@ -48,14 +48,10 @@ LANGOPT(MicrosoftMode     , 1, 0, "Microsoft compatibility mode")
 LANGOPT(AsmBlocks         , 1, 0, "Microsoft inline asm blocks")
 LANGOPT(Borland           , 1, 0, "Borland extensions")
 LANGOPT(CPlusPlus         , 1, 0, "C++")
-<<<<<<< HEAD
-LANGOPT(CPlusPlus0x       , 1, 0, "C++0x")
-LANGOPT(CPlusPlusCX       , 1, 0, "C++/CX")
-LANGOPT(CPlusPlusCLI      , 1, 0, "C++/CLI")
-=======
 LANGOPT(CPlusPlus11       , 1, 0, "C++0x")
 LANGOPT(CPlusPlus1y       , 1, 0, "C++1y")
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
+LANGOPT(CPlusPlusCX       , 1, 0, "C++/CX")
+LANGOPT(CPlusPlusCLI      , 1, 0, "C++/CLI")
 LANGOPT(ObjC1             , 1, 0, "Objective-C 1")
 LANGOPT(ObjC2             , 1, 0, "Objective-C 2")
 BENIGN_LANGOPT(ObjCDefaultSynthProperties , 1, 0, 

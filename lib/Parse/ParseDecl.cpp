@@ -1487,7 +1487,7 @@ bool Parser::MightBeDeclarator(unsigned Context) {
              (getLangOpts().CPlusPlus && Context == Declarator::FileContext);
 
     case tok::identifier: // Possible virt-specifier.
-      return (getLangOpts().CPlusPlus11 && isCXX11VirtSpecifier(NextToken())
+      return (getLangOpts().CPlusPlus11 && isCXX11VirtSpecifier(NextToken()))
           || (getLangOpts().CPlusPlusCLI && isCLIVirtSpecifier(NextToken()));
 
     default:
@@ -3064,7 +3064,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_struct:
     case tok::kw_union:
     case tok::kw___interface:
-    case tok::kw_union:
     case tok::kw_ref_class:
     case tok::kw_ref_struct:
     case tok::kw_value_class:
@@ -3074,11 +3073,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       tok::TokenKind Kind = Tok.getKind();
       ConsumeToken();
 
+HandleClassSpecifier:
+
       // These are attributes following class specifiers.
       // To produce better diagnostic, we parse them when
       // parsing class specifier.
       ParsedAttributesWithRange Attributes(AttrFactory);
-HandleClassSpecifier:
       ParseClassSpecifier(Kind, Loc, DS, TemplateInfo, AS,
                           EnteringContext, DSContext, Attributes);
 

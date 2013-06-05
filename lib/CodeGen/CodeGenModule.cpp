@@ -24,11 +24,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclCXX.h"
-<<<<<<< HEAD
 #include "clang/AST/DeclCLI.h"
-=======
 #include "clang/AST/DeclObjC.h"
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/RecordLayout.h"

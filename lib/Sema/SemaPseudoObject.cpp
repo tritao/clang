@@ -532,10 +532,10 @@ ExprResult CLIPropertyOpBuilder::buildGet() {
   assert(Getter && "Expected a valid CLI getter method");
 
   MemberExpr *ME = buildAccess(Getter).takeAs<MemberExpr>();
-  const SmallVector<Expr *, 2> &Args = RefExpr->getArgs();
+  SmallVector<Expr *, 2> Args = RefExpr->getArgs();
 
   return S.BuildCallToMemberFunction(0, ME, RefExpr->getLocStart(),
-    (Expr **)Args.data(), Args.size(), RefExpr->getLocEnd());
+      Args, RefExpr->getLocEnd());
 }
 
 /// Store to an C++/CLI property reference.
@@ -551,9 +551,10 @@ ExprResult CLIPropertyOpBuilder::buildSet(Expr *op, SourceLocation opcLoc,
   assert(Setter && "Expected a valid CLI setter method");
 
   MemberExpr *ME = buildAccess(Setter).takeAs<MemberExpr>();
+  MultiExprArg Args(&op, 1);
 
-  return S.BuildCallToMemberFunction(0, ME, SourceLocation(), &op, 1,
-    SourceLocation());
+  return S.BuildCallToMemberFunction(0, ME, RefExpr->getLocStart(),
+      Args, RefExpr->getLocEnd());
 }
 
 /// C++/CLI property-specific behavior for doing assignments.

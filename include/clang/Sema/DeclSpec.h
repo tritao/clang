@@ -1996,6 +1996,7 @@ public:
     case ObjCResultContext:
     case TemplateParamContext:
     case CXXNewContext:
+    case CXXCLIGCNewContext:
     case CXXCatchContext:
     case ObjCCatchContext:
     case BlockLiteralContext:

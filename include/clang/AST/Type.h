@@ -3331,7 +3331,9 @@ public:
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  static bool classof(const Type *T) { return T->getTypeClass() == Record; }
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Record || T->getTypeClass() == CLIArray;
+  }
 };
 
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast

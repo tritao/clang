@@ -15,21 +15,9 @@
 #ifndef LLVM_CLANG_SEMA_SEMA_H
 #define LLVM_CLANG_SEMA_SEMA_H
 
-<<<<<<< HEAD
-#include "clang/Sema/Ownership.h"
-#include "clang/Sema/AnalysisBasedWarnings.h"
-#include "clang/Sema/IdentifierResolver.h"
-#include "clang/Sema/ObjCMethodList.h"
-#include "clang/Sema/DeclSpec.h"
-#include "clang/Sema/ExternalSemaSource.h"
-#include "clang/Sema/LocInfoType.h"
-#include "clang/Sema/TypoCorrection.h"
-#include "clang/Sema/Weak.h"
-#include "clang/AST/DeclCLI.h"
-=======
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclarationName.h"
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExternalASTSource.h"
@@ -1930,10 +1918,8 @@ public:
   bool IsNoReturnConversion(QualType FromType, QualType ToType,
                             QualType &ResultTy);
   bool DiagnoseMultipleUserDefinedConversion(Expr *From, QualType ToType);
-<<<<<<< HEAD
-=======
+
   bool isSameOrCompatibleFunctionType(CanQualType Param, CanQualType Arg);
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
 
   ExprResult PerformMoveOrCopyInitialization(const InitializedEntity &Entity,
                                              const VarDecl *NRVOCandidate,

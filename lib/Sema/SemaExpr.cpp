@@ -3599,8 +3599,8 @@ CreateCLIIndexedPropertyExpr(Sema &S, SourceLocation LLoc,
       for (unsigned i = 0; i < Exprs.size(); ++i) {
         Expr *E = Exprs[i];
         CLIArrayConvertDiagnoser Diagnoser(E);
-        ExprResult I = S.ConvertToIntegralOrEnumerationType(E->getLocStart(),
-          E, Diagnoser, /*AllowScopedEnums=*/false);
+        ExprResult I = S.PerformContextualImplicitConversion(E->getLocStart(),
+          E, Diagnoser);
       
         if (I.isInvalid()) {
           HasError = true;
@@ -3614,9 +3614,9 @@ CreateCLIIndexedPropertyExpr(Sema &S, SourceLocation LLoc,
         return ExprError();
 
       if (IntExprs.size() != Arr->getRank()) {
-          S.Diag(Idx->getExprLoc(),
-            S.getDiagnostics().getCustomDiagID( DiagnosticsEngine::Error,
-          "specified too many dimensions to CLI array"));
+        S.Diag(Idx->getExprLoc(),
+               S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+               "specified too many dimensions to CLI array"));
         return ExprError();
       }
 
@@ -3700,16 +3700,9 @@ Sema::ActOnArraySubscriptExpr(Scope *S, Expr *base, SourceLocation lbLoc,
                                                   rbLoc));
   }
 
-  // Use C++ overloaded-operator rules if either operand has record
-  // type.  The spec says to do this if either type is *overloadable*,
-  // but enum types can't declare subscript operators or conversion
-  // operators, so there's nothing interesting for overload resolution
-  // to do if there aren't any record types involved.
-  //
-  // ObjC pointers have their own subscripting logic that is not tied
-  // to overload resolution and so should not take this path.
-  QualType LHSTy = LHSExp->getType();
-  QualType RHSTy = RHSExp->getType();
+  // Check for C++/CLI indexed properties.
+  QualType LHSTy = base->getType();
+  QualType RHSTy = idx->getType();
 
   if (getLangOpts().CPlusPlusCLI &&
       (LHSTy->isHandleType() || RHSTy->isHandleType())) {
@@ -3723,10 +3716,18 @@ Sema::ActOnArraySubscriptExpr(Scope *S, Expr *base, SourceLocation lbLoc,
       RD = RHSHandle->getPointeeType()->getAsCXXRecordDecl();
 
     if ((RD && RD->isCLIRecord())) {
-      return CreateCLIIndexedPropertyExpr(*this, LLoc, RLoc, Base, Idx);
+      return CreateCLIIndexedPropertyExpr(*this, lbLoc, rbLoc, base, idx);
     }
   }
 
+  // Use C++ overloaded-operator rules if either operand has record
+  // type.  The spec says to do this if either type is *overloadable*,
+  // but enum types can't declare subscript operators or conversion
+  // operators, so there's nothing interesting for overload resolution
+  // to do if there aren't any record types involved.
+  //
+  // ObjC pointers have their own subscripting logic that is not tied
+  // to overload resolution and so should not take this path.
   if (getLangOpts().CPlusPlus &&
       (base->getType()->isRecordType() ||
        (!base->getType()->isObjCObjectPointerType() &&
@@ -4192,7 +4193,7 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc,
     AllArgs.push_back(Arg);
   }
 
-  if ((ArgIx < NumArgs) && FDecl && hasCLIParams) {
+  if ((ArgIx < Args.size()) && FDecl && hasCLIParams) {
     unsigned Params = FDecl->getNumParams();
     ParmVarDecl *Param = FDecl->getParamDecl(--Params);
     assert(Param && "Expected a valid parameter decl");
@@ -4202,7 +4203,7 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc,
 
     SmallVector<Expr *, 8> ParamsArgs;
 
-    for (unsigned i = ArgIx; i != NumArgs; ++i) {
+    for (unsigned i = ArgIx; i != Args.size(); ++i) {
       Expr *Arg = Args[ArgIx++];
 
       if (RequireCompleteType(Arg->getLocStart(),

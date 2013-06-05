@@ -555,11 +555,6 @@ static bool CanDeclareSpecialMemberFunction(const CXXRecordDecl *Class) {
 
 void Sema::ForceDeclarationOfImplicitMembers(CXXRecordDecl *Class) {
   if (!CanDeclareSpecialMemberFunction(Class))
-  // Only generate a default C++/CLI constructor.
-  if (Class->isCLIRecord() && Class->getTypeForDecl()->isCLIValueType())
-    return;
-
-  if (!CanDeclareSpecialMemberFunction(Context, Class))
     return;
 
   // If the default constructor has not yet been declared, do so now.
@@ -569,6 +564,12 @@ void Sema::ForceDeclarationOfImplicitMembers(CXXRecordDecl *Class) {
   // If the copy constructor has not yet been declared, do so now.
   if (Class->needsImplicitCopyConstructor())
     DeclareImplicitCopyConstructor(Class);
+
+  // C++/CLI 22.5 Constructors
+  // "A value class having a default constructor or a copy constructor is
+  // ill-formed."
+  if (Class->isCLIRecord() && Class->getTypeForDecl()->isCLIValueType())
+    return;
 
   // If the copy assignment operator has not yet been declared, do so now.
   if (Class->needsImplicitCopyAssignment())

@@ -2115,8 +2115,9 @@ public:
   static SEHLeaveStmt* Create(ASTContext &C,
                               SourceLocation LeaveLoc);
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(getLeaveLoc());
+  SourceLocation getLocStart() const LLVM_READONLY { return LeaveLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return SourceLocation();
   }
 
   SourceLocation getLeaveLoc() const { return LeaveLoc; }
@@ -2126,8 +2127,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == SEHLeaveStmtClass;
   }
-
-  static bool classof(SEHLeaveStmt *) { return true; }
 };
 
 }  // end namespace clang

@@ -45,7 +45,7 @@ CLIGCNewExpr::CLIGCNewExpr(ASTContext &C,
   }
 }
 
-SourceLocation CLIGCNewExpr::getEndLoc() const {
+SourceLocation CLIGCNewExpr::getLocEnd() const {
   switch (getInitializationStyle()) {
   case CXXNewExpr::NoInit:
     return AllocatedTypeInfo->getTypeLoc().getEndLoc();
@@ -58,11 +58,14 @@ SourceLocation CLIGCNewExpr::getEndLoc() const {
 }
 
 // CLIValueClassInitExpr
-SourceRange CLIValueClassInitExpr::getSourceRange() const {
-  SourceLocation Start;
+SourceLocation CLIValueClassInitExpr::getLocStart() const {
   if (TypeInfo)
-    Start = TypeInfo->getTypeLoc().getBeginLoc();
-  return SourceRange(Start, TypeInfo->getTypeLoc().getEndLoc());
+    return TypeInfo->getTypeLoc().getBeginLoc();
+  return SourceLocation();
 }
 
-
+SourceLocation CLIValueClassInitExpr::getLocEnd() const {
+  if (TypeInfo)
+    return TypeInfo->getTypeLoc().getEndLoc();
+  return SourceLocation();
+}

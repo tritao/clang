@@ -1937,17 +1937,17 @@ VirtSpecifiers::Specifier Parser::isCXX11VirtSpecifier(const Token &Tok) const {
 void Parser::ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS,
                                                 bool IsInterface) {
   while (true) {
-    VirtSpecifiers::Specifier Specifier = isCXX11VirtSpecifier();
+    VirtSpecifiers::Specifier CXXSpecifier = isCXX11VirtSpecifier();
     VirtSpecifiers::Specifier ExtraSpecifier = VirtSpecifiers::VS_None;
         
     if (getLangOpts().isCPlusPlusCXorCLI())
         ExtraSpecifier = isCLIVirtSpecifier(Tok);
     
-    if (Specifier == VirtSpecifiers::VS_None
+    if (CXXSpecifier == VirtSpecifiers::VS_None
         && ExtraSpecifier == VirtSpecifiers::VS_None)
         return;
 
-    VirtSpecifiers::Specifier Specifier = Specifier;
+    VirtSpecifiers::Specifier Specifier = CXXSpecifier;
 
     if (Specifier == VirtSpecifiers::VS_None)
         Specifier = ExtraSpecifier;

@@ -47,15 +47,10 @@ class ObjCProtocolDecl;
 struct PrintingPolicy;
 class Stmt;
 class StoredDeclsMap;
-<<<<<<< HEAD
-class DependentDiagnostic;
-class ASTMutationListener;
-class CLIPropertyDecl;
-class CLIEventDecl;
-=======
 class TranslationUnitDecl;
 class UsingDirectiveDecl;
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
+class CLIPropertyDecl;
+class CLIEventDecl;
 }
 
 namespace llvm {

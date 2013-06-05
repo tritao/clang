@@ -88,14 +88,10 @@ public:
     return dyn_cast_or_null<CXXConstructExpr>(getInitializer());
   }
 
-  SourceLocation getStartLoc() const { return StartLoc; }
-  SourceLocation getEndLoc() const;
+  SourceLocation getLocStart() const LLVM_READONLY { return StartLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY;
 
   SourceRange getDirectInitRange() const { return DirectInitRange; }
-
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(getStartLoc(), getEndLoc());
-  }
 
   // Iterators
   child_range children() { return child_range(&Initializer, &Initializer+1); }
@@ -103,7 +99,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CLIGCNewExprClass;
   }
-  static bool classof(const CLIGCNewExpr *) { return true; }
 };
 
 enum CLIValueClassInitKind {
@@ -142,12 +137,12 @@ public:
 
   Expr * getInitExpr() const { return InitExpr; }
 
-  SourceRange getSourceRange() const LLVM_READONLY;
+  SourceLocation getLocStart() const LLVM_READONLY;
+  SourceLocation getLocEnd() const LLVM_READONLY;
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CLIValueClassInitExprClass;
   }
-  static bool classof(const CXXScalarValueInitExpr *) { return true; }
 
   // Iterators
   child_range children() { return child_range(); }
@@ -213,14 +208,12 @@ public:
 
   bool isPropertyIndexing() const { return IsIndexer; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange();
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return SourceLocation(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SourceLocation(); }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CLIPropertyRefExprClass;
   }
-  static bool classof(const CLIPropertyRefExpr *) { return true; }
 
   // Iterators
   child_range children() { return child_range(); }

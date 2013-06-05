@@ -43,7 +43,7 @@ void CodeGenFunction::EmitStopPoint(const Stmt *S) {
   }
 }
 
-static void EmitCLIForEachStmt(CLIForEachStmt &S);
+static void EmitCLIForEachStmt(const CLIForEachStmt &S);
 
 void CodeGenFunction::EmitStmt(const Stmt *S) {
   assert(S && "Null statement?");
@@ -703,7 +703,7 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S) {
   EmitBlock(LoopExit.getBlock(), true);
 }
 
-static void EmitCLIForEachStmt(CLIForEachStmt &S) {
+static void EmitCLIForEachStmt(const CLIForEachStmt &S) {
   // FIXME: Not implemented yet.
 }
 

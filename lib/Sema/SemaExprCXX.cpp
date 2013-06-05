@@ -3500,15 +3500,6 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, UnaryTypeTrait UTT,
       return RD->hasTrivialCopyAssignment() &&
              !RD->hasNonTrivialCopyAssignment();
     return false;
-  case UTT_HasTrivialMoveAssign:
-    // This trait is implemented by MSVC 2012 and needed to parse the
-    // standard library headers.
-    if (T.isPODType(Self.Context))
-      return true;
-    if (const RecordType *RT =
-          C.getBaseElementType(T)->getAs<RecordType>())
-      return cast<CXXRecordDecl>(RT->getDecl())->hasTrivialMoveAssignment();
-    return false;
   case UTT_HasTrivialDestructor:
     // http://gcc.gnu.org/onlinedocs/gcc/Type-Traits.html:
     //   If __is_pod (type) is true or type is a reference type

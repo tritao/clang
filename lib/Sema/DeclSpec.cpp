@@ -459,14 +459,13 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_image3d_t:   return "image3d_t";
   case DeclSpec::TST_sampler_t:   return "sampler_t";
   case DeclSpec::TST_event_t:     return "event_t";
-  case DeclSpec::TST_error:       return "(error)";
-  case DeclSpec::TST_error:            return "(error)";
   case DeclSpec::TST_ref_class:        return "ref class";
   case DeclSpec::TST_ref_struct:       return "ref struct";
   case DeclSpec::TST_value_class:      return "value class";
   case DeclSpec::TST_value_struct:     return "value struct";
   case DeclSpec::TST_interface_class:  return "interface class";
   case DeclSpec::TST_interface_struct: return "interface struct";
+  case DeclSpec::TST_error:            return "(error)";
   }
   llvm_unreachable("Unknown typespec!");
 }

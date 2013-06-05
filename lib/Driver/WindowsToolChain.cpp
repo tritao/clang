@@ -16,7 +16,7 @@
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Options.h"
-#include "clang/Driver/Util.h"#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Path.h"
 
 // Include the necessary headers to interface with the Windows registry and
@@ -44,7 +44,7 @@ Tool *Windows::buildLinker() const {
 Tool *Windows::buildAssembler() const {
   if (getTriple().getEnvironment() == llvm::Triple::MachO)
     return new tools::darwin::Assemble(*this);
-  if (getTriple().getArch() == llvm::Triple::cil) {
+  if (getTriple().getArch() == llvm::Triple::cil)
     return new tools::visualstudio::ILAsm(*this);
   getDriver().Diag(clang::diag::err_no_external_windows_assembler);
   return NULL;

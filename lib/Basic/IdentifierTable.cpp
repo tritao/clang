@@ -140,13 +140,9 @@ static void AddKeyword(StringRef Keyword,
   // We treat bridge casts as objective-C keywords so we can warn on them
   // in non-arc mode.
   else if (LangOpts.ObjC2 && (Flags & KEYARC)) AddResult = 2;
-<<<<<<< HEAD
-  else if (LangOpts.CPlusPlus && (Flags & KEYCXX0X)) AddResult = 3;
+  else if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) AddResult = 3;
   else if (LangOpts.CPlusPlusCX && (Flags & KEYCXXCX)) AddResult = 2;
   else if (LangOpts.CPlusPlusCLI && (Flags & KEYCXXCLI)) AddResult = 2;
-=======
-  else if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) AddResult = 3;
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
 
   // Don't add this keyword under MicrosoftMode.
   if (LangOpts.MicrosoftMode && (Flags & KEYNOMS))

@@ -3106,7 +3106,6 @@ LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
     }
 
     RValue RV = EmitAnyExpr(E->getRHS());
-    LValue LV = EmitCheckedLValue(E->getLHS(), TCK_Store);
 
     // Handle CLI arrays subscriptions right away because they don't use the
     // LLVM store instruction but rather an CIL backend load/store intrinsic.
@@ -3126,7 +3125,7 @@ LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
       }
     }
 
-    LValue LV = EmitLValue(E->getLHS());
+    LValue LV = EmitCheckedLValue(E->getLHS(), TCK_Store);
     EmitStoreThroughLValue(RV, LV);
     return LV;
   }

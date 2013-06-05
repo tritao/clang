@@ -466,13 +466,12 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
         FileManager &FM = Headers.getFileMgr();
         AssemblyDirs.push_back(DirectoryLookup(FM.getDirectory(
           "C:\\Program Files (x86)\\Reference Assemblies\\Microsoft\\"
-          "Framework\\.NETFramework\\v4.0"), SrcMgr::C_System,
-          false, false));
+          "Framework\\.NETFramework\\v4.0"), SrcMgr::C_System, false));
       
       for (unsigned i = 0; i < HSOpts.AssemblyEntries.size(); ++i) {
           AssemblyDirs.push_back(
               DirectoryLookup(FM.getDirectory(HSOpts.AssemblyEntries[i].Path),
-              SrcMgr::C_User, false, false));
+              SrcMgr::C_User, false));
       }
     }
 

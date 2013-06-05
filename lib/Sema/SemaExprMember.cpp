@@ -1669,13 +1669,8 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     VK = VK_LValue;
   } else {
     QualType BaseType = BaseExpr->getType();
-<<<<<<< HEAD
     if (IsArrow) BaseType = BaseType->getPointeeType();
     
-=======
-    if (IsArrow) BaseType = BaseType->getAs<PointerType>()->getPointeeType();
-
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
     Qualifiers BaseQuals = BaseType.getQualifiers();
 
     // GC attributes are never picked up by members.

@@ -19,11 +19,8 @@
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/AST/StmtCXX.h"
-<<<<<<< HEAD
 #include "clang/AST/StmtCLI.h"
-=======
 #include "clang/AST/StmtObjC.h"
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"

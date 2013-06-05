@@ -14,6 +14,7 @@
 #ifndef LLVM_CLANG_AST_DECLCLI_H
 #define LLVM_CLANG_AST_DECLCLI_H
 
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Redeclarable.h"

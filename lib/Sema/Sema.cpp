@@ -144,8 +144,7 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
     NonInstantiationEntries(0), ArgumentPackSubstitutionIndex(-1),
     CurrentInstantiationScope(0), TyposCorrected(0),
     AnalysisWarnings(*this), CurScope(0), Ident_super(0),
-    CLIContext(0),
-{
+    CLIContext(0) {
   TUScope = 0;
 
   LoadedExternalKnownNamespaces = false;

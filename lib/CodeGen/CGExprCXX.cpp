@@ -11,16 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-<<<<<<< HEAD
-#include "clang/Frontend/CodeGenOptions.h"
-#include "clang/AST/DeclCLI.h"
-=======
->>>>>>> e8328540cffa6b5b5f7d07e2e7d2f3503500a383
 #include "CodeGenFunction.h"
 #include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
 #include "CGDebugInfo.h"
 #include "CGObjCRuntime.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/CallSite.h"

@@ -507,12 +507,11 @@ def fmsc_version : Joined<["-"], "fmsc-version=">, Group<f_Group>, Flags<[CC1Opt
 def fdelayed_template_parsing : Flag<["-"], "fdelayed-template-parsing">, Group<f_Group>,
   HelpText<"Parse templated function definitions at the end of the "
            "translation unit ">,  Flags<[CC1Option]>;
-def fmodules_cache_path : Joined<["-"], "fmodules-cache-path=">, Group<i_Group>,
-def fms_cx_extensions : Flag<"-fms-cx-extensions">, Group<f_Group>, Flags<[CC1Option]>,
+def fms_cx_extensions : Flag<["-"], "fms-cx-extensions">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Enables the C++/CX language extensions">;
-def fms_cli_extensions : Flag<"-fms-cli-extensions">, Group<f_Group>, Flags<[CC1Option]>,
+def fms_cli_extensions : Flag<["-"], "fms-cli-extensions">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Enables the C++/CLI language extensions">;
-def fmodule_cache_path : Separate<"-fmodule-cache-path">, Group<i_Group>, 
+def fmodules_cache_path : Joined<["-"], "fmodules-cache-path=">, Group<i_Group>,
   Flags<[NoForward,CC1Option]>, MetaVarName<"<directory>">,
   HelpText<"Specify the module cache path">;
 def fmodules_prune_interval : Joined<["-"], "fmodules-prune-interval=">, Group<i_Group>,
