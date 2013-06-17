@@ -7996,6 +7996,26 @@ Sema::AddArgumentDependentLookupCandidates(DeclarationName Name,
   }
 }
 
+static bool isCLIInterfaceMethod(FunctionDecl* Fn) {
+  clang::CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+  if (!MD)
+    return false;
+  clang::CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(MD->getParent());
+  if (!RD || !RD->isCLIRecord())
+    return false;
+  return RD->getCLIData()->Type == CLI_RT_InterfaceType;
+}
+
+static bool isCLIGenericMethod(FunctionDecl* Fn) {
+  clang::CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+  if (!MD)
+    return false;
+  clang::CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(MD->getParent());
+  if (!RD || !RD->isCLIRecord())
+    return false;
+  return RD->getCLIData()->getGenericData() != 0;
+}
+
 /// isBetterOverloadCandidate - Determines whether the first overload
 /// candidate is a better candidate than the second (C++ 13.3.3p1).
 bool
@@ -8055,17 +8075,26 @@ isBetterOverloadCandidate(Sema &S,
     bool HasCLIParams2 = HasCLIParamArrayAttribute(S, Cand2.Function,
       CLIParamsType);
 
-    if (HasCLIParams1 && Cand2.Function->isVariadic())
+    if (HasCLIParams2 && !HasCLIParams1)
       HasBetterConversion = true;
-    if (HasCLIParams2 && Cand1.Function->isVariadic())
+    else if (HasCLIParams1 && !HasCLIParams2)
       return false;
 
-    if (!HasBetterConversion) {
-      if (HasCLIParams2 && !HasCLIParams1)
-        HasBetterConversion = true;
-      if (HasCLIParams1 && !HasCLIParams2)
-        return false;
-    }
+    // Generic methods have priority.
+    bool IsGeneric1 =  isCLIGenericMethod(Cand1.Function);
+    bool IsGeneric2 =  isCLIGenericMethod(Cand2.Function);
+    if (IsGeneric2 && !IsGeneric1)
+      HasBetterConversion = true;
+    else if (IsGeneric1 && !IsGeneric2)
+      return false;
+
+    // Non-interface methods have priority.
+    bool IsInterface1 =  isCLIInterfaceMethod(Cand1.Function);
+    bool IsInterface2 =  isCLIInterfaceMethod(Cand2.Function);
+    if (IsInterface2 && !IsInterface1)
+      HasBetterConversion = true;
+    else if (IsInterface1 && !IsInterface2)
+      return false;
   }
 
   //    -- for some argument j, ICSj(F1) is a better conversion sequence than
