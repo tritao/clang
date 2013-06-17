@@ -1779,7 +1779,7 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
         llvm::Triple DefaultTriple(LLVM_DEFAULT_TARGET_TRIPLE);
         if (Target.getOS() == llvm::Triple::UnknownOS)
             Target.setOS(DefaultTriple.getOS());
-        TC = new toolchains::Windows(*this, Target);
+        TC = new toolchains::Windows(*this, Target, Args);
         break;
       }
 
