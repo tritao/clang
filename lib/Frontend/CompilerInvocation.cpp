@@ -1122,6 +1122,11 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   
   CompilerInvocation::setLangDefaults(Opts, IK, LangStd);
 
+  llvm::Triple Triple(llvm::Triple::normalize(Args.getLastArgValue(
+      OPT_triple)));
+  if (Triple.getArch() == llvm::Triple::cil)
+    Opts.CPlusPlusCLI = true;
+
   // We abuse '-f[no-]gnu-keywords' to force overriding all GNU-extension
   // keywords. This behavior is provided by GCC's poorly named '-fasm' flag,
   // while a subset (the non-C++ GNU keywords) is provided by GCC's
