@@ -303,7 +303,8 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
 
   // RecordTypes are cached and processed specially.
   if (const RecordType *RT = dyn_cast<RecordType>(Ty))
-    return ConvertRecordDeclType(RT->getDecl());
+    if (!isa<CLIArrayType>(Ty))
+      return ConvertRecordDeclType(RT->getDecl());
   
   // See if type is already cached.
   llvm::DenseMap<const Type *, llvm::Type *>::iterator TCI = TypeCache.find(Ty);

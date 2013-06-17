@@ -1347,15 +1347,16 @@ llvm::Value *CodeGenFunction::EmitCLIGCNewExpr(const CLIGCNewExpr *E) {
   
   llvm::Type *DstTy = ConvertType(E->getType());
 
-  if (const CLIArrayType *AT = allocType->getAs<CLIArrayType>()) {
-    const Expr *InitE = E->getInitializer();
-    const InitListExpr *Init = cast<InitListExpr>(InitE);
+  if (const CLIArrayType *CLIArray = allocType->getAs<CLIArrayType>()) {
+    const CLIValueClassInitExpr *CLIInit = cast<CLIValueClassInitExpr>(
+      E->getInitializer());
+
+    const InitListExpr *Init = cast<InitListExpr>(CLIInit->getInitExpr());
     assert(Init && "Expected a valid initializer list");
 
-    const CLIArrayType *Array = dyn_cast<CLIArrayType>(allocType);
-    QualType ElemType = Array->getElementType();
+    auto ElemTy = cast<llvm::PointerType>(ConvertTypeForMem(
+      CLIArray->getElementType()));
 
-    auto ElemTy = cast<llvm::PointerType>(ConvertTypeForMem(ElemType));
     auto ElemPtr = llvm::ConstantPointerNull::get(ElemTy);
     auto ElemIntrVal = Builder.CreateBitCast(ElemPtr, llvm::PointerType::
       getInt8PtrTy(getLLVMContext()));
@@ -1365,13 +1366,16 @@ llvm::Value *CodeGenFunction::EmitCLIGCNewExpr(const CLIGCNewExpr *E) {
 
     for (unsigned i = 0; i < Init->getNumInits(); ++i) {
       const Expr *E = Init->getInit(i);
-      llvm::Value *Expr = EmitAnyExpr(E).getScalarVal();
+      RValue RV = EmitAnyExpr(E);
+      llvm::Value *Expr = RV.isScalar() ?
+        RV.getScalarVal() : RV.getAggregateAddr();
       CallArgs.push_back(Expr);
     }
 
     llvm::Instruction* CallInst = Builder.CreateCall(CGM.getIntrinsic(
       llvm::Intrinsic::cil_newarr), CallArgs);
 
+    QualType ElemType = CLIArray->getElementType();
     CXXRecordDecl *ElemRD = ElemType->getPointeeType()->getAsCXXRecordDecl();
     llvm::MDString *Str = llvm::MDString::get(getLLVMContext(),
       CGM.getCLIRecordIRName(ElemRD));

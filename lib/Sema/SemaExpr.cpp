@@ -3515,61 +3515,6 @@ static void GatherCommaExpressions(SmallVector<Expr *, 2> &Exprs,
   GatherCommaExpressions(Exprs, BO->getRHS());
 }
 
-class CLIArrayConvertDiagnoser : public Sema::ICEConvertDiagnoser {
-    Expr *Index;
-      
-public:
-    CLIArrayConvertDiagnoser(Expr *ArraySize)
-    : ICEConvertDiagnoser(false, false), Index(Index) { }
-      
-    virtual DiagnosticBuilder diagnoseNotInt(Sema &S, SourceLocation Loc,
-                                            QualType T) {
-    return S.Diag(Loc, diag::err_array_size_not_integral)
-                << S.getLangOpts().CPlusPlus0x << T;
-    }
-      
-    virtual DiagnosticBuilder diagnoseIncomplete(Sema &S, SourceLocation Loc,
-                                                QualType T) {
-    return S.Diag(Loc, diag::err_array_size_incomplete_type)
-                << T << Index->getSourceRange();
-    }
-      
-    virtual DiagnosticBuilder diagnoseExplicitConv(Sema &S,
-                                                    SourceLocation Loc,
-                                                    QualType T,
-                                                    QualType ConvTy) {
-    return S.Diag(Loc, diag::err_array_size_explicit_conversion) << T << ConvTy;
-    }
-      
-    virtual DiagnosticBuilder noteExplicitConv(Sema &S,
-                                                CXXConversionDecl *Conv,
-                                                QualType ConvTy) {
-    return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
-                << ConvTy->isEnumeralType() << ConvTy;
-    }
-      
-    virtual DiagnosticBuilder diagnoseAmbiguous(Sema &S, SourceLocation Loc,
-                                                QualType T) {
-    return S.Diag(Loc, diag::err_array_size_ambiguous_conversion) << T;
-    }
-      
-    virtual DiagnosticBuilder noteAmbiguous(Sema &S, CXXConversionDecl *Conv,
-                                            QualType ConvTy) {
-    return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
-                << ConvTy->isEnumeralType() << ConvTy;
-    }
-      
-    virtual DiagnosticBuilder diagnoseConversion(Sema &S, SourceLocation Loc,
-                                                QualType T,
-                                                QualType ConvTy) {
-    return S.Diag(Loc,
-                    S.getLangOpts().CPlusPlus0x
-                    ? diag::warn_cxx98_compat_array_size_conversion
-                    : diag::ext_array_size_conversion)
-                << T << ConvTy->isEnumeralType() << ConvTy;
-    }
-};
-
 static ExprResult
 CreateCLIIndexedPropertyExpr(Sema &S, SourceLocation LLoc,
                              SourceLocation RLoc, Expr *Base, Expr *Idx) {
@@ -4193,64 +4138,55 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc,
     AllArgs.push_back(Arg);
   }
 
+  /// C++/CLI 14.6 Parameter array conversions
+  /// "If overload resolution selects one of the synthesized signatures, the
+  /// conversion sequences needed for each argument to satisfy the call is
+  /// performed. For the synthesized parameter array arguments, the compiler
+  /// constructs a CLI array of length n and initializes it with the converted
+  /// values. Then the function call is made with the constructed parameter
+  /// array."
   if ((ArgIx < Args.size()) && FDecl && hasCLIParams) {
-    unsigned Params = FDecl->getNumParams();
-    ParmVarDecl *Param = FDecl->getParamDecl(--Params);
+    ParmVarDecl *Param = FDecl->getParamDecl(FDecl->getNumParams()-1);
     assert(Param && "Expected a valid parameter decl");
-    
-    QualType ProtoArgType = cast<CLIArrayType>(CLIParamsType->getAs<
-      HandleType>()->getPointeeType())->getElementType();
 
-    SmallVector<Expr *, 8> ParamsArgs;
-
+    SmallVector<Expr *, 4> CLIParamsArgs;
     for (unsigned i = ArgIx; i != Args.size(); ++i) {
       Expr *Arg = Args[ArgIx++];
-
-      if (RequireCompleteType(Arg->getLocStart(),
-                              ProtoArgType,
-                              diag::err_call_incomplete_argument, Arg))
-        return true;
-
-      InitializedEntity Entity =
-        InitializedEntity::InitializeParameter(Context, ProtoArgType,
-                                               /*Consumed=*/false);
-
-      ExprResult ArgE = PerformCopyInitialization(Entity,
-                                                  SourceLocation(),
-                                                  Owned(Arg),
-                                                  /*TopLevelOfInitList=*/false,
-                                                  AllowExplicit);
-      if (ArgE.isInvalid())
-        return true;
-
-      Arg = ArgE.takeAs<Expr>();
-      ParamsArgs.push_back(Arg);
+      CLIParamsArgs.push_back(Arg);
     }
-
-    /// C++/CLI 14.6 Parameter array conversions
-    /// "If overload resolution selects one of the synthesized signatures, the
-    /// conversion sequences needed for each argument to satisfy the call is
-    /// performed. For the synthesized parameter array arguments, the compiler
-    /// constructs a CLI array of length n and initializes it with the converted
-    /// values. Then the function call is made with the constructed parameter
-    /// array."
 
     // We need to get a fake location because else isExplicit() on the list 
     // will return false and fail an assert later while checking.
     SourceLocation Loc = getASTContext().getSourceManager().
       getLocForEndOfFile(getASTContext().getSourceManager().getMainFileID());
 
-    ExprResult InitE = ActOnInitList(Loc, ParamsArgs, Loc);
-    InitListExpr *Init = InitE.takeAs<InitListExpr>();
-    assert(Init && "Expected a valid initializer list");
-    
-    ExprResult Arr = BuildCXXCLIGCNew(SourceLocation(), CLIParamsType,
-                                      Param->getTypeSourceInfo(), SourceRange(),
-                                      Init);
-    Invalid |= Arr.isInvalid();
-    AllArgs.push_back(Arr.takeAs<Expr>());
+    ExprResult InitList = ActOnInitList(Loc, CLIParamsArgs, Loc);
+    if (InitList.isInvalid())
+      return true;
 
-    
+    assert(CLIParamsType->isHandleType());
+    const CLIArrayType *ProtoArrayType = CLIParamsType->getAs<HandleType>()
+      ->getPointeeType()->getAs<CLIArrayType>();
+
+    ExprResult NewArray = BuildCXXCLIGCNew(SourceLocation(),
+                                           QualType(ProtoArrayType, 0),
+                                           Param->getTypeSourceInfo(),
+                                           SourceRange(),
+                                           InitList.take(), 0);
+    if (NewArray.isInvalid())
+      return true;
+
+    InitializedEntity Entity =
+        InitializedEntity::InitializeParameter(Context, CLIParamsType,
+                                               /*Consumed=*/false);
+
+    ExprResult ArgE = PerformCopyInitialization(Entity,
+                                                SourceLocation(),
+                                                Owned(NewArray.take()),
+                                                /*TopLevelOfInitList=*/false,
+                                                AllowExplicit);
+    Invalid |= ArgE.isInvalid();
+    AllArgs.push_back(ArgE.take());
   } else
 
   // If this is a variadic call, handle args passed through "...".

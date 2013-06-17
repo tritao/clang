@@ -2569,6 +2569,7 @@ void InitializationSequence::Step::Destroy() {
   case SK_ObjCObjectConversion:
   case SK_CLIValueTypeZeroInit:
   case SK_CLIValueTypeCopyInit:
+  case SK_CLIArrayInit:
   case SK_ArrayInit:
   case SK_ParenthesizedArrayInit:
   case SK_PassByIndirectCopyRestore:
@@ -2794,6 +2795,13 @@ void InitializationSequence::AddCLIValueCopyInitializationStep(QualType T,
   S.Kind = SK_CLIValueTypeCopyInit;
   S.Type = T;
   S.InitExpr = E;
+  Steps.push_back(S);
+}
+
+void InitializationSequence::AddCLIArrayInitializationStep(QualType T) {
+  Step S;
+  S.Kind = SK_CLIArrayInit;
+  S.Type = T;
   Steps.push_back(S);
 }
 
@@ -3262,6 +3270,14 @@ static void TryListInitialization(Sema &S,
                                   InitListExpr *InitList,
                                   InitializationSequence &Sequence) {
   QualType DestType = Entity.getType();
+
+  // C++/CLI array initializers.
+  if (S.getLangOpts().CPlusPlusCLI && DestType->isHandleType()) {
+    if (DestType->getPointeeType()->isCLIArrayType()) {
+      Sequence.AddCLIArrayInitializationStep(DestType->getPointeeType());
+      return;
+    }
+  }
 
   // C++ doesn't allow scalar initialization with more than one argument.
   // But C99 complex numbers are scalars and it makes sense there.
@@ -5319,6 +5335,7 @@ InitializationSequence::Perform(Sema &S,
   case SK_ZeroInitialization:
   case SK_CLIValueTypeZeroInit:
   case SK_CLIValueTypeCopyInit:
+  case SK_CLIArrayInit:
     break;
   }
 
@@ -5775,6 +5792,20 @@ InitializationSequence::Perform(Sema &S,
                                                               TSInfo,
                                                               CLI_VCIK_CopyInit,
                                                               Step->InitExpr));
+      break;
+    }
+
+    case SK_CLIArrayInit: {
+      TypeSourceInfo *TSInfo = Entity.getTypeSourceInfo();
+      if (!TSInfo)
+        TSInfo = S.Context.getTrivialTypeSourceInfo(Step->Type,
+                                                    Kind.getRange().getBegin());
+      ExprResult NewExpr = S.BuildCXXCLIGCNew(Kind.getRange().getBegin(),
+                                              Step->Type,
+                                              TSInfo,
+                                              Kind.getRange(),
+                                              (Expr *)Args[0], 0);
+      CurInit = NewExpr.take();
       break;
     }
 
@@ -6616,6 +6647,10 @@ void InitializationSequence::dump(raw_ostream &OS) const {
 
     case SK_CLIValueTypeCopyInit:
       OS << "C++/CLI value type copy-initialization";
+      break;
+
+    case SK_CLIArrayInit:
+      OS << "C++/CLI array initialization";
       break;
 
     case SK_ArrayInit:

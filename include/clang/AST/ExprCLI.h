@@ -24,8 +24,7 @@
 
 namespace clang {
 
-/// @brief Represents a C++/CLI gcnew-expression for memory allocation
-// and constructor calls, e.g: "new CLIGCNewExpr(foo)".
+/// @brief Represents a C++/CLI gcnew-expression used for object allocation.
 class CLIGCNewExpr : public Expr {
   // Contains an optional initialization expression.
   Stmt *Initializer;
@@ -67,7 +66,7 @@ public:
   /// \brief Whether this gcnew-expression has any initializer at all.
   bool hasInitializer() const { return StoredInitializationStyle > 0; }
 
-  /// \brief The kind of initializer this new-expression has.
+  /// \brief The kind of initializer this gcnew-expression has.
   CXXNewExpr::InitializationStyle getInitializationStyle() const {
     if (StoredInitializationStyle == 0)
       return CXXNewExpr::NoInit;
@@ -75,7 +74,7 @@ public:
         StoredInitializationStyle-1);
   }
 
-  /// \brief The initializer of this new-expression.
+  /// \brief The initializer of this gcnew-expression.
   Expr *getInitializer() {
     return cast<Expr>(Initializer);
   }
@@ -104,6 +103,7 @@ public:
 enum CLIValueClassInitKind {
   CLI_VCIK_ZeroInit,
   CLI_VCIK_CopyInit,
+  CLI_VCIK_ArrayInit,
 };
 
 /// @brief A C++/CLI expression which represents zero or copy initialization

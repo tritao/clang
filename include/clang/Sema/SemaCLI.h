@@ -18,6 +18,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclCLI.h"
 #include "clang/AST/Type.h"
+#include "clang/Sema/SemaDiagnostic.h"
 
 namespace clang {
 
@@ -59,6 +60,67 @@ public:
 };
 
 bool HasCLIParamArrayAttribute(Sema &S, FunctionDecl* Fn, QualType& Type);
+
+class CLIArrayConvertDiagnoser : public Sema::ICEConvertDiagnoser {
+    Expr *Index;
+      
+public:
+    CLIArrayConvertDiagnoser(Expr *ArraySize)
+    : ICEConvertDiagnoser(false, false, false), Index(Index) { }
+      
+    virtual Sema::SemaDiagnosticBuilder diagnoseNotInt(Sema &S,
+                                                       SourceLocation Loc,
+                                                       QualType T) {
+      return S.Diag(Loc, diag::err_array_size_not_integral)
+               << S.getLangOpts().CPlusPlus11 << T;
+    }
+      
+    virtual Sema::SemaDiagnosticBuilder diagnoseIncomplete(Sema &S,
+                                                           SourceLocation Loc,
+                                                           QualType T) {
+      return S.Diag(Loc, diag::err_array_size_incomplete_type)
+               << T << Index->getSourceRange();
+    }
+      
+    virtual Sema::SemaDiagnosticBuilder diagnoseExplicitConv(Sema &S,
+                                                             SourceLocation Loc,
+                                                             QualType T,
+                                                             QualType ConvTy) {
+      return S.Diag(Loc, diag::err_array_size_explicit_conversion)
+               << T << ConvTy;
+    }
+      
+    virtual Sema::SemaDiagnosticBuilder noteExplicitConv(Sema &S,
+                                                         CXXConversionDecl *Conv,
+                                                         QualType ConvTy) {
+      return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
+               << ConvTy->isEnumeralType() << ConvTy;
+    }
+      
+    virtual Sema::SemaDiagnosticBuilder diagnoseAmbiguous(Sema &S,
+                                                          SourceLocation Loc,
+                                                          QualType T) {
+      return S.Diag(Loc, diag::err_array_size_ambiguous_conversion) << T;
+    }
+      
+    virtual Sema::SemaDiagnosticBuilder noteAmbiguous(Sema &S,
+                                                      CXXConversionDecl *Conv,
+                                                      QualType ConvTy) {
+      return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
+               << ConvTy->isEnumeralType() << ConvTy;
+    }
+      
+    virtual Sema::SemaDiagnosticBuilder diagnoseConversion(Sema &S,
+                                                           SourceLocation Loc,
+                                                           QualType T,
+                                                           QualType ConvTy) {
+      return S.Diag(Loc,
+                    S.getLangOpts().CPlusPlus11
+                    ? diag::warn_cxx98_compat_array_size_conversion
+                    : diag::ext_array_size_conversion)
+               << T << ConvTy->isEnumeralType() << ConvTy;
+    }
+};
 
 }  // end namespace clang
 

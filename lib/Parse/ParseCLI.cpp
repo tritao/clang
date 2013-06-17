@@ -319,7 +319,17 @@ ExprResult Parser::ParseCLIGCNewExpression(SourceLocation Start) {
   if (Initializer.isInvalid())
     return Initializer;
 
-  return Actions.ActOnCXXCLIGCNew(Start, DeclaratorInfo, Initializer.take());
+  ExprResult ExtraInitializer;
+  if (Tok.is(tok::l_brace)) {
+    Diag(Tok.getLocation(),
+         diag::warn_cxx98_compat_generalized_initializer_lists);
+    ExtraInitializer = ParseBraceInitializer();
+  }
+  if (ExtraInitializer.isInvalid())
+    return ExtraInitializer;
+
+  return Actions.ActOnCXXCLIGCNew(Start, DeclaratorInfo, Initializer.take(),
+      ExtraInitializer.take());
 }
 
 /// \brief Determine whether the given token is a C++/CLI virt-specifier.

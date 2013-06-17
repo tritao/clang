@@ -640,6 +640,8 @@ public:
     SK_CLIValueTypeZeroInit,
     /// \brief A copy-initialization of a C++/CLI value type.
     SK_CLIValueTypeCopyInit,
+    /// \brief An initialization of a C++/CLI array type.
+    SK_CLIArrayInit,
     /// \brief Array initialization (from an array rvalue).
     /// This is a GNU C extension.
     SK_ArrayInit,
@@ -992,6 +994,9 @@ public:
 
   /// \brief Add an C++/CLI value type copy-initialization step.
   void AddCLIValueCopyInitializationStep(QualType T, Expr *E);
+
+  /// \brief Add an C++/CLI array type initialization step.
+  void AddCLIArrayInitializationStep(QualType T);
 
   /// \brief Add an array initialization step.
   void AddArrayInitStep(QualType T);

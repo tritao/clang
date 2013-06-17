@@ -4065,12 +4065,14 @@ public:
   /// ActOnCXXCLIGCNew - Parsed a C++/CLI 'gcnew' expression.
   ExprResult ActOnCXXCLIGCNew(SourceLocation StartLoc,
                          Declarator &D,
-                         Expr *Initializer);
+                         Expr *Initializer,
+                         Expr *ExtraInitializer);
   ExprResult BuildCXXCLIGCNew(SourceLocation StartLoc,
                          QualType AllocType,
                          TypeSourceInfo *AllocTypeInfo,
                          SourceRange DirectInitRange,
-                         Expr *Initializer);
+                         Expr *Initializer,
+                         Expr *ExtraInitializer);
   bool CheckCLIGCNewType(QualType AllocType, QualType &InitType,
                          SourceLocation Loc, SourceRange R);
 

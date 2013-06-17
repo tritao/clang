@@ -2098,7 +2098,8 @@ public:
                                  AllocatedType,
                                  AllocatedTypeInfo,
                                  DirectInitRange,
-                                 Initializer);
+                                 Initializer,
+                                 0);
   }
 
   /// \brief Build a new C++/CLI value class initialization expression.
