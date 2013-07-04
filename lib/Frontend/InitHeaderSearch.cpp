@@ -464,8 +464,13 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
 
     if (triple.getArch() == llvm::Triple::cil || Lang.CPlusPlusCLI) {
         FileManager &FM = Headers.getFileMgr();
+
+        // FIXME: Add SDK searching here..
         AssemblyDirs.push_back(DirectoryLookup(FM.getDirectory(
           "C:\\Program Files (x86)\\Reference Assemblies\\Microsoft\\"
+          "Framework\\.NETFramework\\v4.0"), SrcMgr::C_System, false));
+        AssemblyDirs.push_back(DirectoryLookup(FM.getDirectory(
+          "C:\\Program Files\\Reference Assemblies\\Microsoft\\"
           "Framework\\.NETFramework\\v4.0"), SrcMgr::C_System, false));
       
       for (unsigned i = 0; i < HSOpts.AssemblyEntries.size(); ++i) {
@@ -679,6 +684,8 @@ void InitHeaderSearch::Realize(const LangOptions &Lang) {
       llvm::errs() << "#using \"...\" search starts here:\n";
       llvm::errs() << "#using <...> search starts here:\n";
       for (unsigned i = 0, e = AssemblyDirs.size(); i != e; ++i) {
+        if (!AssemblyDirs[i].getDir())
+          continue;
         llvm::errs() << " " << AssemblyDirs[i].getName() << "\n";
       }
     }
