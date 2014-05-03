@@ -1282,17 +1282,17 @@ ActionResult<CLICustomAttribute*> Sema::ActOnCLIAttribute(Scope *S,
   return Attr;
 }
 
-bool HasCLIParamArrayAttribute(Sema &S, FunctionDecl *FD, QualType &ParamType) {
+bool HasCLIParamArrayAttribute(Sema &S, const FunctionDecl *FD,
+                               QualType &ParamType) {
   unsigned Params = FD->getNumParams();
   if (!Params)
     return false;
 
-  ParmVarDecl *PD = FD->getParamDecl(--Params);
+  auto PD = FD->getParamDecl(--Params);
   assert(PD && "Expected a valid parameter decl");
 
-  for (specific_attr_iterator<CLICustomAttribute> it = PD->specific_attr_begin<
-    CLICustomAttribute>(); it != PD->specific_attr_end<CLICustomAttribute>();
-    ++it) {
+  for (auto it = PD->specific_attr_begin<CLICustomAttribute>();
+       it != PD->specific_attr_end<CLICustomAttribute>(); ++it) {
     CLICustomAttribute *CLIAttr = *it;
     if (CLIAttr->Class == S.getCLIContext()->ParamArrayAttribute) {
       assert(isa<HandleType>(PD->getType()));

@@ -1696,6 +1696,7 @@ public:
   CLIMethodData *getCLIData() const { return CLIData; }
   void setCLIData(CLIMethodData *Data) { CLIData = Data; }
   bool isCLIMethod() const { return CLIData != 0; }
+  bool hasCLIParametersArray(Sema& S) const;
 
   bool isStatic() const;
   bool isInstance() const { return !isStatic(); }

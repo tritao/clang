@@ -13,10 +13,31 @@
 
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclCLI.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 using namespace clang;
+
+CLIMethodData::CLIMethodData()
+    : MetadataToken(0)
+    , ReturnTemplateParamIndex(0)
+    , ParameterArrayOriginalOverload(0) {
+}
+
+CLIMethodData::CLIMethodData(CLIMethodData& MD)
+    : MetadataToken(MD.MetadataToken)
+    , FullName(MD.FullName)
+    , ReturnTemplateParamIndex(MD.ReturnTemplateParamIndex)
+    , ParameterArrayOriginalOverload(MD.ParameterArrayOriginalOverload) {
+}
+
+bool CXXMethodDecl::hasCLIParametersArray(Sema& S) const {
+  if (!isCLIMethod())
+    return false;
+  QualType CLIParamsType;
+  return HasCLIParamArrayAttribute(S, this, CLIParamsType);
+}
 
 CLIDefinitionData *CXXRecordDecl::getCLIData() const {
   return CLIData;

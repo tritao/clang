@@ -150,9 +150,8 @@ public:
 
 class CLIMethodData {
 public:
-  CLIMethodData()
-    : MetadataToken(0), ReturnTemplateParamIndex(0) {
-  }
+  CLIMethodData();
+  CLIMethodData(CLIMethodData& MD);
 
   // CLI metadata token.
   unsigned MetadataToken;
@@ -171,6 +170,13 @@ public:
   /// Sets the index of this parameter in its template specialization.
   void setReturnTemplateParamIndex(unsigned Index) {
     ReturnTemplateParamIndex = (unsigned char)Index;
+  }
+
+  /// Used to specify this method is a candidate set overload.
+  CXXMethodDecl* ParameterArrayOriginalOverload;
+
+  bool isParameterArrayCandidateSetOverload() {
+    return ParameterArrayOriginalOverload != 0;
   }
 };
 

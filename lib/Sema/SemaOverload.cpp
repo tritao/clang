@@ -5650,6 +5650,86 @@ ExprResult Sema::PerformContextualImplicitConversion(
   return finishContextualImplicitConversion(*this, Loc, From, Converter);
 }
 
+static CXXMethodDecl* BuildCLIVariadicExpandedOverload(Sema& S,
+                                                       CXXMethodDecl *Method,
+                                                       ArrayRef<Expr *> Args) {
+  QualType ParamsArrayTy;
+  HasCLIParamArrayAttribute(S, Method, ParamsArrayTy);
+
+  auto ElemType = ParamsArrayTy->getPointeeType()->getAs<CLIArrayType>()
+      ->getElementType();
+  auto ElemTypeInfo = S.getASTContext().getTrivialTypeSourceInfo(ElemType);
+
+  llvm::SmallVector<QualType, 6> ArgsTys(Args.size(), ElemType);
+  auto NumNonVariadicParams = Method->getNumParams() - 1;
+  for (unsigned I = 0; I < NumNonVariadicParams; ++I) {
+    auto OrigParam = Method->getParamDecl(I);
+    ArgsTys[I] = OrigParam->getType();
+  }
+
+  auto MethodTy = Method->getType()->getAs<FunctionProtoType>();
+  auto ExpandedTy = S.getASTContext().getFunctionType(MethodTy->getReturnType(),
+      ArgsTys, MethodTy->getExtProtoInfo());
+
+  auto Expanded = CXXMethodDecl::Create(S.getASTContext(), Method->getParent(),
+      Method->getLocStart(), Method->getNameInfo(), ExpandedTy,
+      Method->getTypeSourceInfo(), Method->getStorageClass(),
+      Method->isInlined(), Method->isConstexpr(), Method->getLocEnd());
+  Expanded->setCLIData(new (S.getASTContext()) CLIMethodData(*Method->getCLIData()));
+
+  llvm::SmallVector<ParmVarDecl*, 6> Params(Args.size());
+
+  for (unsigned I = 0; I < NumNonVariadicParams; ++I) {
+    auto OrigParam = Method->getParamDecl(I);
+    Params[I] = ParmVarDecl::Create(S.getASTContext(), Expanded,
+        OrigParam->getLocStart(), OrigParam->getInnerLocStart(),
+        OrigParam->getIdentifier(), OrigParam->getType(),
+        OrigParam->getTypeSourceInfo(), OrigParam->getStorageClass(),
+        OrigParam->getDefaultArg());
+  }
+
+  auto NumVariadicParams = Args.size() - NumNonVariadicParams;
+  auto ArrayParam = Method->getParamDecl(NumNonVariadicParams);
+
+  for (unsigned I = NumNonVariadicParams; I < Args.size(); ++I) {
+    Params[I] = ParmVarDecl::Create(S.getASTContext(), Expanded,
+        /*StartLoc=*/SourceLocation(), /*IdLoc=*/SourceLocation(),
+        ArrayParam->getIdentifier(), ElemType, ElemTypeInfo,
+        ArrayParam->getStorageClass(), /*DefArg=*/0);
+  }
+  Expanded->setParams(Params);
+  Expanded->getCLIData()->ParameterArrayOriginalOverload = Method;
+
+  return Expanded;
+}
+
+static void
+AddCLIVariadicParameterArraysOverloads(Sema& S,
+                                       CXXMethodDecl *Method,
+                                       DeclAccessPair FoundDecl,
+                                       ArrayRef<Expr *> Args,
+                                       OverloadCandidateSet &CandidateSet,
+                                       bool SuppressUserConversions) {
+  assert(Method->isCLIMethod() && "Expected a C++/CLI variadic method");
+
+  // C++/CLI 18.4 Parameter arrays
+  // "When a function with a parameter array is included in the candidate set
+  // for overload resolution, two function signatures are included.
+  // Given a function signature, the exact form replaces the parameter array
+  // parameter with a normal array parameter and the expanded form replaces
+  // the parameter array parameter with a series of parameters of the array's
+  // element type."
+  S.AddMethodCandidate(Method, FoundDecl, Method->getParent(),
+                       QualType(), Expr::Classification::makeSimpleLValue(),
+                       Args, CandidateSet, SuppressUserConversions);
+  Method->getCLIData()->ParameterArrayOriginalOverload = Method;
+
+  auto Expanded = BuildCLIVariadicExpandedOverload(S, Method, Args);
+  S.AddMethodCandidate(Expanded, FoundDecl, Expanded->getParent(),
+                       QualType(), Expr::Classification::makeSimpleLValue(),
+                       Args, CandidateSet, SuppressUserConversions);
+}
+
 /// AddOverloadCandidate - Adds the given function to the set of
 /// candidate functions, using the given function call arguments.  If
 /// @p SuppressUserConversions, then don't allow user-defined
@@ -5727,28 +5807,14 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
 
   unsigned NumParams = Proto->getNumParams();
 
-  // (C++/CLI 18.4): A candidate function having fewer than m
-  // parameters is viable only if it has a params array in its
-  // last parameter.
-  QualType CLIParamsType;
-  bool HasCLIParams = getLangOpts().CPlusPlusCLI &&
-    HasCLIParamArrayAttribute(*this, Function, CLIParamsType);
-
-
   // (C++ 13.3.2p2): A candidate function having fewer than m
   // parameters is viable only if it has an ellipsis in its parameter
   // list (8.3.5).
-  if (!HasCLIParams) {
-     if ((Args.size() + (PartialOverloading && Args.size())) > NumParams &&
+  if ((Args.size() + (PartialOverloading && Args.size())) > NumParams &&
       !Proto->isVariadic()) {
-      Candidate.Viable = false;
-      Candidate.FailureKind = ovl_fail_too_many_arguments;
-      return;
-    }
-  } else {
-    // Remove the last arg from further checking it will try to convert
-    // the argument.
-    --NumParams;
+    Candidate.Viable = false;
+    Candidate.FailureKind = ovl_fail_too_many_arguments;
+    return;
   }
 
   // (C++ 13.3.2p2): A candidate function having more than m parameters
@@ -5795,28 +5861,11 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
         return;
       }
     } else {
-      if (HasCLIParams) {
-        QualType CLIParamsElemType = cast<CLIArrayType>(CLIParamsType->getAs<
-          HandleType>()->getPointeeType())->getElementType();
-
-        Candidate.Conversions[ArgIdx]
-          = TryCopyInitialization(*this, Args[ArgIdx], CLIParamsElemType,
-                                  SuppressUserConversions,
-                                  /*InOverloadResolution=*/true,
-                                  /*AllowObjCWritebackConversion=*/false);
-        Candidate.Conversions[ArgIdx].setCLIParamsArrayConversion();
-        if (Candidate.Conversions[ArgIdx].isBad()) {
-          Candidate.Viable = false;
-          Candidate.FailureKind = ovl_fail_bad_conversion;
-          break;
-        }
-      } else {
       // (C++ 13.3.2p2): For the purposes of overload resolution, any
       // argument for which there is no corresponding parameter is
       // considered to ""match the ellipsis" (C+ 13.3.3.1.3).
       Candidate.Conversions[ArgIdx].setEllipsis();
     }
-	}
   }
 
   if (EnableIfAttr *FailedAttr = CheckEnableIf(Function, Args)) {
@@ -5973,6 +6022,21 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
                          ArrayRef<Expr *> Args,
                          OverloadCandidateSet &CandidateSet,
                          bool SuppressUserConversions) {
+  // Handle C++/CLI parameter arrays variadics.
+  // For the purpose of overload resolution, the compiler creates signatures
+  // for the parameter array functions by replacing the parameter array
+  // argument with n arguments of the CLI array's element type, where n
+  // matches the number of arguments in the function call.
+  static bool addingCLIMethod;
+  if (Method->hasCLIParametersArray(*this) && !addingCLIMethod) {
+    addingCLIMethod = true;
+    AddCLIVariadicParameterArraysOverloads(*this, Method, FoundDecl,
+                                           Args, CandidateSet,
+                                           SuppressUserConversions);
+    addingCLIMethod = false;
+    return;
+  }
+
   const FunctionProtoType *Proto
     = dyn_cast<FunctionProtoType>(Method->getType()->getAs<FunctionType>());
   assert(Proto && "Methods without a prototype cannot be overloaded");
@@ -8356,6 +8420,15 @@ static bool isCLIGenericMethod(FunctionDecl* Fn) {
   if (!RD || !RD->isCLIRecord())
     return false;
   return RD->getCLIData()->getGenericData() != 0;
+}
+
+static bool isCLIParameterArrayOverload(FunctionDecl* Fn) {
+  clang::CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+  if (!MD)
+    return false;
+  if (!MD->isCLIMethod())
+    return false;
+  return MD->getCLIData()->isParameterArrayCandidateSetOverload();
 }
 
 /// isBetterOverloadCandidate - Determines whether the first overload
@@ -12304,6 +12377,10 @@ Sema::BuildForRangeBeginEndCall(Scope *S, SourceLocation Loc,
 /// refer (possibly indirectly) to Fn. Returns the new expr.
 Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
                                            FunctionDecl *Fn) {
+  if (auto MD = dyn_cast<CXXMethodDecl>(Fn))
+    if (MD->isCLIMethod() && MD->getCLIData()->ParameterArrayOriginalOverload)
+      Fn = MD->getCLIData()->ParameterArrayOriginalOverload;
+
   if (ParenExpr *PE = dyn_cast<ParenExpr>(E)) {
     Expr *SubExpr = FixOverloadedFunctionReference(PE->getSubExpr(),
                                                    Found, Fn);

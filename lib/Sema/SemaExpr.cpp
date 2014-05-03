@@ -4169,6 +4169,15 @@ static TypoCorrection TryTypoCorrectionForCall(Sema &S,
   return TypoCorrection();
 }
 
+static bool isCLIParameterArrayOverload(FunctionDecl* Fn) {
+  clang::CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+  if (!MD)
+    return false;
+  if (!MD->isCLIMethod())
+    return false;
+  return MD->getCLIData()->isParameterArrayCandidateSetOverload();
+}
+
 /// ConvertArgumentsForCall - Converts the arguments specified in
 /// Args/NumArgs to the parameter types of the function FDecl with
 /// function prototype Proto. Call is the call expression itself, and
@@ -4240,14 +4249,10 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
     Call->setNumArgs(Context, NumParams);
   }
 
-  QualType CLIParamsType;
-  bool hasCLIParams = getLangOpts().CPlusPlusCLI && FDecl &&
-    HasCLIParamArrayAttribute(*this, FDecl, CLIParamsType);
-
   // If too many are passed and not variadic, error on the extras and drop
   // them.
   if (Args.size() > NumParams) {
-    if (!Proto->isVariadic() && !hasCLIParams) {
+    if (!Proto->isVariadic() && !isCLIParameterArrayOverload(FDecl)) {
       MemberExpr *ME = dyn_cast<MemberExpr>(Fn);
       TypoCorrection TC;
       if (FDecl && (TC = TryTypoCorrectionForCall(
@@ -4300,10 +4305,11 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
   if (Invalid)
     return true;
   unsigned TotalNumArgs = AllArgs.size();
+  if (isCLIParameterArrayOverload(FDecl))
+    Call->setNumArgs(Context, TotalNumArgs);
   for (unsigned i = 0; i < TotalNumArgs; ++i)
     Call->setArg(i, AllArgs[i]);
 
-  Call->setNumArgs(Context, TotalNumArgs);
   return false;
 }
 
@@ -4317,16 +4323,9 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
   unsigned NumArgsToCheck = Args.size();
   bool Invalid = false;
 
-  QualType CLIParamsType;
-  bool hasCLIParams = getLangOpts().CPlusPlusCLI && FDecl &&
-    HasCLIParamArrayAttribute(*this, FDecl, CLIParamsType);
-
   if (Args.size() != NumParams)
     // Use default arguments for missing arguments
     NumArgsToCheck = NumParams;
-
-  if (hasCLIParams && NumArgsToCheck)
-    --NumArgsToCheck;
 
   unsigned ArgIx = 0;
   // Continue to check argument types (even if we have too few/many args).
@@ -4401,20 +4400,27 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
     AllArgs.push_back(Arg);
   }
 
-  /// C++/CLI 14.6 Parameter array conversions
-  /// "If overload resolution selects one of the synthesized signatures, the
-  /// conversion sequences needed for each argument to satisfy the call is
-  /// performed. For the synthesized parameter array arguments, the compiler
-  /// constructs a CLI array of length n and initializes it with the converted
-  /// values. Then the function call is made with the constructed parameter
-  /// array."
-  if ((ArgIx < Args.size()) && FDecl && hasCLIParams) {
-    ParmVarDecl *Param = FDecl->getParamDecl(FDecl->getNumParams()-1);
+  /// For C++/CLI, we have to deal with two kinds of variadics:
+  ///  * Parameter arrays (params object[])
+  ///  * Arg-lists (__arglist)
+
+  if (isCLIParameterArrayOverload(FDecl)) {
+    /// C++/CLI 14.6 Parameter array conversions
+    /// "If overload resolution selects one of the synthesized signatures, the
+    /// conversion sequences needed for each argument to satisfy the call is
+    /// performed. For the synthesized parameter array arguments, the compiler
+    /// constructs a CLI array of length n and initializes it with the converted
+    /// values. Then the function call is made with the constructed parameter
+    /// array."
+    auto MD = dyn_cast<CXXMethodDecl>(FDecl);
+    auto OrigOverload = MD->getCLIData()->ParameterArrayOriginalOverload;
+    ParmVarDecl *Param = OrigOverload->getParamDecl(OrigOverload->getNumParams()-1);
     assert(Param && "Expected a valid parameter decl");
 
+    auto StartParamIx = OrigOverload->getNumParams() - 1;
     SmallVector<Expr *, 4> CLIParamsArgs;
-    for (unsigned i = ArgIx; i != Args.size(); ++i) {
-      Expr *Arg = Args[ArgIx++];
+    for (unsigned I = StartParamIx; I < Args.size(); ++I) {
+      Expr *Arg = AllArgs[I];
       CLIParamsArgs.push_back(Arg);
     }
 
@@ -4427,12 +4433,12 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
     if (InitList.isInvalid())
       return true;
 
+    QualType CLIParamsType = Param->getType();
     assert(CLIParamsType->isHandleType());
-    const CLIArrayType *ProtoArrayType = CLIParamsType->getAs<HandleType>()
-      ->getPointeeType()->getAs<CLIArrayType>();
 
+    auto CLIParamsArrType = CLIParamsType->getPointeeType()->getAs<CLIArrayType>();
     ExprResult NewArray = BuildCXXCLIGCNew(SourceLocation(),
-                                           QualType(ProtoArrayType, 0),
+                                           QualType(CLIParamsArrType, 0),
                                            Param->getTypeSourceInfo(),
                                            SourceRange(),
                                            InitList.take(), 0);
@@ -4440,8 +4446,8 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
       return true;
 
     InitializedEntity Entity =
-        InitializedEntity::InitializeParameter(Context, CLIParamsType,
-                                               /*Consumed=*/false);
+      InitializedEntity::InitializeParameter(Context, CLIParamsType,
+                                             /*Consumed=*/false);
 
     ExprResult ArgE = PerformCopyInitialization(Entity,
                                                 SourceLocation(),
@@ -4449,8 +4455,11 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
                                                 /*TopLevelOfInitList=*/false,
                                                 AllowExplicit);
     Invalid |= ArgE.isInvalid();
+    AllArgs.resize(StartParamIx);
     AllArgs.push_back(ArgE.take());
-  } else
+
+    return Invalid;
+  }
 
   // If this is a variadic call, handle args passed through "...".
   if (CallType != VariadicDoesNotApply) {
@@ -4879,6 +4888,9 @@ Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
   // We know the result type of the call, set it.
   TheCall->setType(FuncT->getCallResultType(Context));
   TheCall->setValueKind(Expr::getValueKindForType(FuncT->getReturnType()));
+
+  if (isCLIParameterArrayOverload(FDecl))
+    FuncT = FDecl->getType()->getAs<FunctionType>();
 
   const FunctionProtoType *Proto = dyn_cast<FunctionProtoType>(FuncT);
   if (Proto) {

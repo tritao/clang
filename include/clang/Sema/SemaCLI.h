@@ -18,6 +18,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclCLI.h"
 #include "clang/AST/Type.h"
+#include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaDiagnostic.h"
 
 namespace clang {
@@ -59,7 +60,8 @@ public:
   CLICecilContext *CecilContext;
 };
 
-bool HasCLIParamArrayAttribute(Sema &S, FunctionDecl* Fn, QualType& Type);
+bool HasCLIParamArrayAttribute(Sema &S, const FunctionDecl* Fn,
+                               QualType& Type);
 
 class CLIArrayConvertDiagnoser : public Sema::ICEConvertDiagnoser {
     Expr *Index;
