@@ -7175,8 +7175,10 @@ void visualstudio::ILAsm::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("/quiet");
 
   if (Output.isFilename()) {
-    CmdArgs.push_back(Args.MakeArgString(std::string("/output=") +
-                                         Output.getFilename()));
+    auto Asm = std::string(Output.getFilename());
+    if (!Args.hasArg(options::OPT_c))
+        Asm.replace(Asm.begin() + Asm.find_last_of(".") + 1, Asm.end(), "exe");
+    CmdArgs.push_back(Args.MakeArgString(std::string("/output=") + Asm));
   } else {
     assert(Output.isNothing() && "Invalid output.");
   }
@@ -7200,6 +7202,9 @@ void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                       const InputInfoList &Inputs,
                                       const ArgList &Args,
                                       const char *LinkingOutput) const {
+  if (getToolChain().getArch() == llvm::Triple::cil)
+    return;
+
   ArgStringList CmdArgs;
 
   if (Output.isFilename()) {

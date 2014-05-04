@@ -1541,6 +1541,9 @@ void Driver::BuildJobsForAction(Compilation &C,
   if (JA->getType() == types::TY_dSYM)
     BaseInput = InputInfos[0].getFilename();
 
+  if (A->getType() == types::TY_Object && TC->getArch() == llvm::Triple::cil)
+    AtTopLevel = true;
+
   // Determine the place to write output to, if any.
   if (JA->getType() == types::TY_Nothing)
     Result = InputInfo(A->getType(), BaseInput);
