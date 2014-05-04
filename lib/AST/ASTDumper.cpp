@@ -636,6 +636,15 @@ void ASTDumper::dumpAccessSpecifier(AccessSpecifier AS) {
   case AS_private:
     OS << "private";
     break;
+  case AS_internal:
+    OS << "internal";
+    break;
+  case AS_protected_public:
+    OS << "protected public";
+    break;
+  case AS_protected_private:
+    OS << "protected private";
+    break;
   }
 }
 

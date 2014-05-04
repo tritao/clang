@@ -1560,6 +1560,9 @@ void MicrosoftCXXNameMangler::mangleFunctionClass(const FunctionDecl *FD) {
   if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
     switch (MD->getAccess()) {
       case AS_none:
+      case AS_internal:
+      case AS_protected_public:
+      case AS_protected_private:
         llvm_unreachable("Unsupported access specifier");
       case AS_private:
         if (MD->isStatic())
@@ -2074,6 +2077,9 @@ static void mangleThunkThisAdjustment(const CXXMethodDecl *MD,
     char AccessSpec;
     switch (MD->getAccess()) {
     case AS_none:
+    case AS_internal:
+    case AS_protected_public:
+    case AS_protected_private:
       llvm_unreachable("Unsupported access specifier");
     case AS_private:
       AccessSpec = '0';
@@ -2102,6 +2108,9 @@ static void mangleThunkThisAdjustment(const CXXMethodDecl *MD,
   } else if (Adjustment.NonVirtual != 0) {
     switch (MD->getAccess()) {
     case AS_none:
+    case AS_internal:
+    case AS_protected_public:
+    case AS_protected_private:
       llvm_unreachable("Unsupported access specifier");
     case AS_private:
       Out << 'G';
@@ -2116,6 +2125,9 @@ static void mangleThunkThisAdjustment(const CXXMethodDecl *MD,
   } else {
     switch (MD->getAccess()) {
     case AS_none:
+    case AS_internal:
+    case AS_protected_public:
+    case AS_protected_private:
       llvm_unreachable("Unsupported access specifier");
     case AS_private:
       Out << 'A';
