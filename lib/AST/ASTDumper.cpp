@@ -574,6 +574,12 @@ void ASTDumper::dumpAttr(const Attr *A) {
 #define ATTR(X) case attr::X: OS << #X; break;
 #include "clang/Basic/AttrList.inc"
     default: llvm_unreachable("unexpected attribute kind");
+
+    case attr::CLICustomAttribute:
+        auto CLIAttr = dyn_cast<CLICustomAttribute>(A);
+        OS << "CLICustomAttribute";
+        dumpName(CLIAttr->Class);
+        return;
     }
     OS << "Attr";
   }
