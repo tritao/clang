@@ -44,11 +44,20 @@
 #ifndef CXX_KEYWORD_OPERATOR
 #define CXX_KEYWORD_OPERATOR(X,Y)
 #endif
+#ifndef CXX_CX_CONTEXT_KEYWORD
+#define CXX_CX_CONTEXT_KEYWORD(X)
+#endif
+#ifndef CXX_CX_AGGREGATE_KEYWORD
+#define CXX_CX_AGGREGATE_KEYWORD(X, Y) TOK(kw_ ## X ## _ ## Y)
+#endif
 #ifndef OBJC1_AT_KEYWORD
 #define OBJC1_AT_KEYWORD(X)
 #endif
 #ifndef OBJC2_AT_KEYWORD
 #define OBJC2_AT_KEYWORD(X)
+#endif
+#ifndef OBJC_CONTEXT_KEYWORD
+#define OBJC_CONTEXT_KEYWORD(X)
 #endif
 #ifndef TESTING_KEYWORD
 #define TESTING_KEYWORD(X, L) KEYWORD(X, L)
@@ -64,7 +73,7 @@
 // These have meaning after a '#' at the start of a line. These define enums in
 // the tok::pp_* namespace.  Note that IdentifierInfo::getPPKeywordID must be
 // manually updated if something is added here.
-PPKEYWORD(not_keyword)
+//PPKEYWORD(not_keyword)
 
 // C99 6.10.1 - Conditional Inclusion.
 PPKEYWORD(if)
@@ -219,6 +228,7 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //   KEYC11   - This is a keyword introduced to C in C11
 //   KEYCXX   - This is a C++ keyword, or a C++-specific keyword in the
 //              implementation namespace
+//   KEYCXXCLI- This is a keyword in the C++/CLI dialect.
 //   KEYNOCXX - This is a keyword in every non-C++ dialect.
 //   KEYCXX11 - This is a C++ keyword introduced to C++ in C++11
 //   KEYGNU   - This is a keyword if GNU extensions are enabled
@@ -333,7 +343,7 @@ KEYWORD(char32_t                    , KEYCXX11|KEYNOMS)
 KEYWORD(constexpr                   , KEYCXX11)
 KEYWORD(decltype                    , KEYCXX11)
 KEYWORD(noexcept                    , KEYCXX11)
-KEYWORD(nullptr                     , KEYCXX11)
+KEYWORD(nullptr                     , KEYCXX11|KEYCXXCLI)
 KEYWORD(static_assert               , KEYCXX11)
 KEYWORD(thread_local                , KEYCXX11)
 
@@ -568,15 +578,62 @@ ALIAS("__char32_t"   , char32_t   , KEYCXX)
 // Clang-specific keywords enabled only in testing.
 TESTING_KEYWORD(__unknown_anytype , KEYALL)
 
+//===----------------------------------------------------------------------===//
+// C++/CX and C++/CLI extensions
+//===----------------------------------------------------------------------===//
+
+// C++/CLI - 10.3 Using Directive.
+PPKEYWORD(using)
+
+// Keywords
+KEYWORD(generic                   , KEYCXXCX|KEYCXXCLI)
+KEYWORD(gcnew                     , KEYCXXCLI)
+KEYWORD(__identifier              , KEYCXXCLI)
+
+// Context sensitive keywords
+CXX_CX_CONTEXT_KEYWORD(abstract)
+CXX_CX_CONTEXT_KEYWORD(assembly)
+CXX_CX_CONTEXT_KEYWORD(constructor)
+CXX_CX_CONTEXT_KEYWORD(delegate)
+CXX_CX_CONTEXT_KEYWORD(each)
+CXX_CX_CONTEXT_KEYWORD(event)
+CXX_CX_CONTEXT_KEYWORD(field)
+CXX_CX_CONTEXT_KEYWORD(finally)
+CXX_CX_CONTEXT_KEYWORD(in)
+CXX_CX_CONTEXT_KEYWORD(initonly)
+CXX_CX_CONTEXT_KEYWORD(internal)
+CXX_CX_CONTEXT_KEYWORD(literal)
+CXX_CX_CONTEXT_KEYWORD(method)
+CXX_CX_CONTEXT_KEYWORD(override)
+CXX_CX_CONTEXT_KEYWORD(parameter)
+CXX_CX_CONTEXT_KEYWORD(property)
+CXX_CX_CONTEXT_KEYWORD(returnvalue)
+CXX_CX_CONTEXT_KEYWORD(sealed)
+CXX_CX_CONTEXT_KEYWORD(where)
+
+CXX_CX_CONTEXT_KEYWORD(ref)
+CXX_CX_CONTEXT_KEYWORD(value)
+CXX_CX_CONTEXT_KEYWORD(interface)
+
+// Aggregate keywords
+CXX_CX_AGGREGATE_KEYWORD(for, each)
+CXX_CX_AGGREGATE_KEYWORD(ref, class)
+CXX_CX_AGGREGATE_KEYWORD(ref, struct)
+CXX_CX_AGGREGATE_KEYWORD(value, class)
+CXX_CX_AGGREGATE_KEYWORD(value, struct)
+CXX_CX_AGGREGATE_KEYWORD(interface, class)
+CXX_CX_AGGREGATE_KEYWORD(interface, struct)
+CXX_CX_AGGREGATE_KEYWORD(enum, class)
+CXX_CX_AGGREGATE_KEYWORD(enum, struct)
 
 //===----------------------------------------------------------------------===//
-// Objective-C @-preceded keywords.
+// Objective-C extensions
 //===----------------------------------------------------------------------===//
 
 // These have meaning after an '@' in Objective-C mode. These define enums in
 // the tok::objc_* namespace.
 
-OBJC1_AT_KEYWORD(not_keyword)
+//OBJC1_AT_KEYWORD(not_keyword)
 OBJC1_AT_KEYWORD(class)
 OBJC1_AT_KEYWORD(compatibility_alias)
 OBJC1_AT_KEYWORD(defs)
@@ -604,8 +661,16 @@ OBJC2_AT_KEYWORD(synthesize)
 OBJC2_AT_KEYWORD(dynamic)
 OBJC2_AT_KEYWORD(import)
 
-// TODO: What to do about context-sensitive keywords like:
-//       bycopy/byref/in/inout/oneway/out?
+OBJC_CONTEXT_KEYWORD(in)
+OBJC_CONTEXT_KEYWORD(out)
+OBJC_CONTEXT_KEYWORD(inout)
+OBJC_CONTEXT_KEYWORD(oneway)
+OBJC_CONTEXT_KEYWORD(bycopy)
+OBJC_CONTEXT_KEYWORD(byref)
+
+//===----------------------------------------------------------------------===//
+// Annotations
+//===----------------------------------------------------------------------===//
 
 ANNOTATION(cxxscope)     // annotation for a C++ scope spec, e.g. "::foo::bar::"
 ANNOTATION(typename)     // annotation for a C typedef name, a C++ (possibly
@@ -701,8 +766,11 @@ ANNOTATION(module_end)
 
 #undef ANNOTATION
 #undef TESTING_KEYWORD
+#undef OBJC_CONTEXT_KEYWORD
 #undef OBJC2_AT_KEYWORD
 #undef OBJC1_AT_KEYWORD
+#undef CXX_CX_AGGREGATE_KEYWORD
+#undef CXX_CX_CONTEXT_KEYWORD
 #undef CXX_KEYWORD_OPERATOR
 #undef PPKEYWORD
 #undef ALIAS

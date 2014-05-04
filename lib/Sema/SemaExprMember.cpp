@@ -13,9 +13,11 @@
 #include "clang/Sema/SemaInternal.h"
 #include "clang/AST/ASTLambda.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Lookup.h"
@@ -880,8 +882,12 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                ActOnMemberAccessExtraArgs *ExtraArgs) {
   QualType BaseType = BaseExprType;
   if (IsArrow) {
-    assert(BaseType->isPointerType());
-    BaseType = BaseType->castAs<PointerType>()->getPointeeType();
+    if (BaseType->isHandleType()) {
+      BaseType = BaseType->castAs<HandleType>()->getPointeeType();
+    } else {
+      assert(BaseType->isPointerType());
+      BaseType = BaseType->castAs<PointerType>()->getPointeeType();
+    }
   }
   R.setBaseObjectType(BaseType);
   
@@ -943,7 +949,12 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     // Rederive where we looked up.
     DeclContext *DC = (SS.isSet()
                        ? computeDeclContext(SS, false)
-                       : BaseType->getAs<RecordType>()->getDecl());
+                       : 0);
+
+	if (const CLIArrayType *ArrTy = BaseType->getAs<CLIArrayType>())
+      DC = ArrTy->getDecl();
+    else
+      DC = BaseType->getAs<RecordType>()->getDecl();
 
     if (ExtraArgs) {
       ExprResult RetryExpr;
@@ -1198,6 +1209,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     else if (const ObjCObjectPointerType *Ptr
                = BaseType->getAs<ObjCObjectPointerType>())
       BaseType = Ptr->getPointeeType();
+	else if (const HandleType*Ptr = BaseType->getAs<HandleType>())
+      BaseType = Ptr->getPointeeType();
     else if (BaseType->isRecordType()) {
       // Recover from arrow accesses to records, e.g.:
       //   struct MyRecord foo;
@@ -1222,9 +1235,33 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
   }
 
   // Handle field access to simple records.
-  if (const RecordType *RTy = BaseType->getAs<RecordType>()) {
+  if (const RecordType *RTy = BaseType->getAsRecordType()) {
     if (LookupMemberExprInRecord(*this, R, BaseExpr.get()->getSourceRange(),
                                  RTy, OpLoc, SS, HasTemplateArgs))
+      return ExprError();
+    // Handle CLI properties access
+    if (RTy->isCLIRecordType() && R.isSingleResult()) {
+      if (CLIPropertyDecl *PD = dyn_cast<CLIPropertyDecl>(R.getFoundDecl())) {
+        return Owned(new (Context) CLIPropertyRefExpr(PD,
+                                                      R.getLookupNameInfo(),
+                                                      BaseExpr.get(),
+                                                      IsArrow,
+                                                      Context.PseudoObjectTy,
+                                                      VK_LValue,
+                                                      OK_CLIProperty));
+      }
+    }
+
+    // Returning valid-but-null is how we indicate to the caller that
+    // the lookup result was filled in.
+    return Owned((Expr*) 0);
+  }
+
+  // Handle field access to CLI arrays.
+  if (const CLIArrayType *ArrTy = BaseType->getAs<CLIArrayType>()) {
+    if (LookupMemberExprInRecord(*this, R, BaseExpr.get()->getSourceRange(),
+                                 cast<RecordType>(ArrTy), OpLoc,
+                                 SS, HasTemplateArgs))
       return ExprError();
 
     // Returning valid-but-null is how we indicate to the caller that
@@ -1704,8 +1741,7 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     VK = VK_LValue;
   } else {
     QualType BaseType = BaseExpr->getType();
-    if (IsArrow) BaseType = BaseType->getAs<PointerType>()->getPointeeType();
-
+    if (IsArrow) BaseType = BaseType->getPointeeType(); 
     Qualifiers BaseQuals = BaseType.getQualifiers();
 
     // GC attributes are never picked up by members.

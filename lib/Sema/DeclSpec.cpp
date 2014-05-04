@@ -252,6 +252,8 @@ bool Declarator::isDeclarationOfFunction() const {
       continue;
     case DeclaratorChunk::Pointer:
     case DeclaratorChunk::Reference:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
     case DeclaratorChunk::Array:
     case DeclaratorChunk::BlockPointer:
     case DeclaratorChunk::MemberPointer:
@@ -285,6 +287,12 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_unspecified:
     case TST_void:
     case TST_wchar:
+    case TST_ref_class:
+    case TST_ref_struct:
+    case TST_value_class:
+    case TST_value_struct:
+    case TST_interface_class:
+    case TST_interface_struct:
       return false;
 
     case TST_decltype_auto:
@@ -450,6 +458,12 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T,
   case DeclSpec::TST_underlyingType: return "__underlying_type";
   case DeclSpec::TST_unknown_anytype: return "__unknown_anytype";
   case DeclSpec::TST_atomic: return "_Atomic";
+  case DeclSpec::TST_ref_class:        return "ref class";
+  case DeclSpec::TST_ref_struct:       return "ref struct";
+  case DeclSpec::TST_value_class:      return "value class";
+  case DeclSpec::TST_value_struct:     return "value struct";
+  case DeclSpec::TST_interface_class:  return "interface class";
+  case DeclSpec::TST_interface_struct: return "interface struct";
   case DeclSpec::TST_error:       return "(error)";
   }
   llvm_unreachable("Unknown typespec!");
@@ -1175,8 +1189,10 @@ bool VirtSpecifiers::SetSpecifier(Specifier VS, SourceLocation Loc,
   switch (VS) {
   default: llvm_unreachable("Unknown specifier!");
   case VS_Override: VS_overrideLoc = Loc; break;
-  case VS_Sealed:
+  case VS_Sealed:   VS_sealedLoc = Loc; break;
   case VS_Final:    VS_finalLoc = Loc; break;
+  case VS_Abstract: VS_abstractLoc = Loc; break;
+  case VS_New:      VS_newLoc = Loc; break;
   }
 
   return false;
@@ -1187,6 +1203,8 @@ const char *VirtSpecifiers::getSpecifierName(Specifier VS) {
   default: llvm_unreachable("Unknown specifier");
   case VS_Override: return "override";
   case VS_Final: return "final";
+  case VS_Abstract: return "abstract";
+  case VS_New: return "new";
   case VS_Sealed: return "sealed";
   }
 }

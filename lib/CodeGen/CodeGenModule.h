@@ -928,6 +928,9 @@ public:
                               unsigned &CallingConv,
                               bool AttrOnCallSite);
 
+  // Gets the CLI record IR name.
+  std::string getCLIRecordIRName(const CXXRecordDecl *RD);
+
   StringRef getMangledName(GlobalDecl GD);
   void getBlockMangledName(GlobalDecl GD, MangleBuffer &Buffer,
                            const BlockDecl *BD);

@@ -171,6 +171,7 @@ public:
   void VisitCXXStdInitializerListExpr(CXXStdInitializerListExpr *E);
   void VisitExprWithCleanups(ExprWithCleanups *E);
   void VisitCXXScalarValueInitExpr(CXXScalarValueInitExpr *E);
+  void VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E);
   void VisitCXXTypeidExpr(CXXTypeidExpr *E) { EmitAggLoadOfLValue(E); }
   void VisitMaterializeTemporaryExpr(MaterializeTemporaryExpr *E);
   void VisitOpaqueValueExpr(OpaqueValueExpr *E);
@@ -714,6 +715,7 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
   case CK_BuiltinFnToFnPtr:
   case CK_ZeroToOCLEvent:
   case CK_AddressSpaceConversion:
+  case CK_CLI_StringToHandle:
     llvm_unreachable("cast kind invalid for aggregate types");
   }
 }
@@ -980,6 +982,30 @@ void AggExprEmitter::VisitCXXScalarValueInitExpr(CXXScalarValueInitExpr *E) {
   QualType T = E->getType();
   AggValueSlot Slot = EnsureSlot(T);
   EmitNullInitializationToLValue(CGF.MakeAddrLValue(Slot.getAddr(), T));
+}
+
+void AggExprEmitter::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  QualType T = E->getType();
+  assert(T->isCLIValueType() && "Expected a CLI value class type");
+
+  AggValueSlot Slot = EnsureSlot(T);
+  llvm::Value *Value = Slot.getAddr();
+
+  if (E->getInitKind() == CLI_VCIK_ZeroInit) {
+    llvm::SmallVector<llvm::Value *, 1> Args;
+    Args.push_back(Value);
+
+    llvm::Value* CallInst = Builder.CreateCall(CGF.CGM.getIntrinsic(
+      llvm::Intrinsic::cil_newvalue), Args);
+  } else {
+    assert(E->getInitKind() == CLI_VCIK_CopyInit);
+    llvm::SmallVector<llvm::Value *, 2> Args;
+    Args.push_back(Value);
+    Args.push_back(CGF.EmitLValue(E->getInitExpr()).getAddress());
+
+    llvm::Value* CallInst = Builder.CreateCall(CGF.CGM.getIntrinsic(
+      llvm::Intrinsic::cil_copyvalue), Args);
+  }
 }
 
 void AggExprEmitter::VisitImplicitValueInitExpr(ImplicitValueInitExpr *E) {

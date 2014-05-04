@@ -1611,6 +1611,10 @@ static void addExceptionArgs(const ArgList &Args, types::ID InputType,
     ES.ShouldUseExceptionTables |=
       shouldUseExceptionTablesForObjCExceptions(objcRuntime, Triple);
   }
+  if (Triple.getArch() == llvm::Triple::cil) {
+    ES.ExceptionsEnabled = false;
+    ES.ShouldUseExceptionTables = false;
+  }
 
   if (types::isCXX(InputType)) {
     bool CXXExceptionsEnabled = ES.ExceptionsEnabled;
@@ -3461,6 +3465,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back(Args.MakeArgString("-fmsc-version=" + msc_ver));
   }
 
+  // C++/CX language extensions
+  if (Args.hasArg(options::OPT_fms_cx_extensions))
+      CmdArgs.push_back("-fms-cx-extensions");
+
+  // C++/CLI language extensions
+  if (Args.hasArg(options::OPT_fms_cli_extensions) ||
+                  getToolChain().getTriple().getArch() == llvm::Triple::cil)
+      CmdArgs.push_back("-fms-cli-extensions");
 
   // -fno-borland-extensions is default.
   if (Args.hasFlag(options::OPT_fborland_extensions,
@@ -7149,6 +7161,37 @@ void dragonfly::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("ld"));
+  C.addCommand(new Command(JA, *this, Exec, CmdArgs));
+}
+
+void visualstudio::ILAsm::ConstructJob(Compilation &C, const JobAction &JA,
+                                       const InputInfo &Output,
+                                       const InputInfoList &Inputs,
+                                       const ArgList &Args,
+                                       const char *LinkingOutput) const {
+  ArgStringList CmdArgs;
+
+  CmdArgs.push_back("/nologo");
+  CmdArgs.push_back("/quiet");
+
+  if (Output.isFilename()) {
+    CmdArgs.push_back(Args.MakeArgString(std::string("/output=") +
+                                         Output.getFilename()));
+  } else {
+    assert(Output.isNothing() && "Invalid output.");
+  }
+
+  Args.AddAllArgValues(CmdArgs, options::OPT_a);
+
+  // Add filenames immediately.
+  for (InputInfoList::const_iterator
+       it = Inputs.begin(), ie = Inputs.end(); it != ie; ++it) {
+    if (it->isFilename())
+      CmdArgs.push_back(it->getFilename());
+  }
+
+  const char *Exec =
+    Args.MakeArgString(getToolChain().GetProgramPath("ilasm.exe"));
   C.addCommand(new Command(JA, *this, Exec, CmdArgs));
 }
 

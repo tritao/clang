@@ -16,6 +16,7 @@ add_clang_library(clangSema
   Sema.cpp
   SemaAccess.cpp
   SemaAttr.cpp
+  SemaCLI.cpp
   SemaCXXScopeSpec.cpp
   SemaCast.cpp
   SemaChecking.cpp
@@ -56,3 +57,6 @@ add_clang_library(clangSema
   clangEdit
   clangLex
   )
+
+#  set_source_files_properties(SemaCLI.cpp PROPERTIES COMPILE_FLAGS
+#    "/clr /AI \"${CLANG_SOURCE_DIR}/deps/cecil/\" /GR")

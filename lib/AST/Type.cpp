@@ -15,6 +15,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
@@ -426,7 +427,19 @@ QualType Type::getPointeeType() const {
     return MPT->getPointeeType();
   if (const DecayedType *DT = getAs<DecayedType>())
     return DT->getPointeeType();
+  if (const HandleType *HT = getAs<HandleType>())
+    return HT->getPointeeType();
   return QualType();
+}
+
+const RecordType *Type::getAsRecordType() const {
+  // If this is directly a record type, return it.
+  if (const RecordType *RT = dyn_cast<RecordType>(this)) {
+    return RT;
+  } else if (const CLIArrayType *RT = dyn_cast<CLIArrayType>(this)) {
+    return RT;
+  }
+  return 0;
 }
 
 const RecordType *Type::getAsStructureType() const {
@@ -542,6 +555,8 @@ const CXXRecordDecl *Type::getPointeeCXXRecordDecl() const {
 CXXRecordDecl *Type::getAsCXXRecordDecl() const {
   if (const RecordType *RT = getAs<RecordType>())
     return dyn_cast<CXXRecordDecl>(RT->getDecl());
+  else if (const CLIArrayType *AT = getAs<CLIArrayType>())
+    return dyn_cast<CXXRecordDecl>(AT->getDecl());
   else if (const InjectedClassNameType *Injected
                                   = getAs<InjectedClassNameType>())
     return Injected->getDecl();
@@ -567,6 +582,9 @@ namespace {
 
     // Only these types can contain the desired 'auto' type.
     AutoType *VisitPointerType(const PointerType *T) {
+      return Visit(T->getPointeeType());
+    }
+    AutoType *VisitHandleType(const HandleType *T) {
       return Visit(T->getPointeeType());
     }
     AutoType *VisitBlockPointerType(const BlockPointerType *T) {
@@ -614,6 +632,11 @@ bool Type::hasIntegerRepresentation() const {
     return isIntegerType();
 }
 
+static bool IsCLIIntegerType(ASTContext &Ctx, CXXRecordDecl *RD) {
+  CLITypeKind Kind = RD->getCLIData()->Kind;
+  return Kind >= CLI_TK_Byte && Kind >= CLI_TK_UInt64;
+}
+
 /// \brief Determine whether this type is an integral type.
 ///
 /// This routine determines whether the given type is an integral type per 
@@ -642,6 +665,13 @@ bool Type::isIntegralType(ASTContext &Ctx) const {
     if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType))
       return ET->getDecl()->isComplete(); // Complete enum types are integral in C.
   
+  if (Ctx.getLangOpts().CPlusPlusCLI) {
+    if (const RecordType *RT = dyn_cast<RecordType>(CanonicalType))
+      if (CXXRecordDecl *RD = RT->getAsCXXRecordDecl())
+        if (RD->isCLIRecord())
+          return IsCLIIntegerType(Ctx, RD);
+  }
+
   return false;
 }
 
@@ -852,6 +882,8 @@ Type::ScalarTypeKind Type::getScalarTypeKind() const {
     return STK_BlockPointer;
   } else if (isa<ObjCObjectPointerType>(T)) {
     return STK_ObjCObjectPointer;
+  } else if (isa<HandleType>(T)) {
+    return STK_CLIHandle;
   } else if (isa<MemberPointerType>(T)) {
     return STK_MemberPointer;
   } else if (isa<EnumType>(T)) {
@@ -1383,6 +1415,12 @@ TypeWithKeyword::getTagTypeKindForTypeSpec(unsigned TypeSpec) {
   case TST_interface: return TTK_Interface;
   case TST_union: return TTK_Union;
   case TST_enum: return TTK_Enum;
+  case TST_ref_class: return TTK_RefClass;
+  case TST_ref_struct: return TTK_RefStruct;
+  case TST_value_class: return TTK_ValueClass;
+  case TST_value_struct: return TTK_ValueStruct;
+  case TST_interface_class: return TTK_InterfaceClass;
+  case TST_interface_struct: return TTK_InterfaceStruct;
   }
   
   llvm_unreachable("Type specifier is not a tag type kind.");
@@ -1396,6 +1434,7 @@ TypeWithKeyword::getKeywordForTagTypeKind(TagTypeKind Kind) {
   case TTK_Interface: return ETK_Interface;
   case TTK_Union: return ETK_Union;
   case TTK_Enum: return ETK_Enum;
+  case TTK_RefClass: return ETK_Class;
   }
   llvm_unreachable("Unknown tag type kind.");
 }
@@ -2214,8 +2253,11 @@ static CachedProperties computeCachedProperties(const Type *T) {
     return Cache::get(cast<PointerType>(T)->getPointeeType());
   case Type::BlockPointer:
     return Cache::get(cast<BlockPointerType>(T)->getPointeeType());
+  case Type::Handle:
+    return Cache::get(cast<HandleType>(T)->getPointeeType());
   case Type::LValueReference:
   case Type::RValueReference:
+  case Type::TrackingReference:
     return Cache::get(cast<ReferenceType>(T)->getPointeeType());
   case Type::MemberPointer: {
     const MemberPointerType *MPT = cast<MemberPointerType>(T);
@@ -2248,6 +2290,8 @@ static CachedProperties computeCachedProperties(const Type *T) {
     return Cache::get(cast<ObjCObjectType>(T)->getBaseType());
   case Type::ObjCObjectPointer:
     return Cache::get(cast<ObjCObjectPointerType>(T)->getPointeeType());
+  case Type::CLIArray:
+    return Cache::get(cast<CLIArrayType>(T)->getElementType());
   case Type::Atomic:
     return Cache::get(cast<AtomicType>(T)->getValueType());
   }
@@ -2450,6 +2494,37 @@ bool Type::hasSizedVLAType() const {
 
   return false;
 }
+
+bool Type::isCLIRecordType() const {
+  if (const RecordType *RT = getAsRecordType()) {
+    if (CXXRecordDecl *RD = RT->getAsCXXRecordDecl())
+      return RD->isCLIRecord();
+  }
+  return false;
+}
+
+bool Type::isCLIValueType() const {
+  if (const RecordType *RT = getAsRecordType())
+    if (CXXRecordDecl *RD = RT->getAsCXXRecordDecl())
+      if (RD->isCLIRecord())
+        if (CLIDefinitionData *Data = RD->getCLIData())
+          return Data->Type == CLI_RT_ValueType;
+  return false;
+}
+
+bool Type::isCLIReferenceType() const {
+  if (const RecordType *RT = getAsRecordType())
+    if (CXXRecordDecl *RD = RT->getAsCXXRecordDecl())
+      if (RD->isCLIRecord())
+        if (CLIDefinitionData *Data = RD->getCLIData())
+          return Data->Type == CLI_RT_ReferenceType;
+  return false;
+}
+
+bool Type::isCLIArrayType() const {
+  return isa<CLIArrayType>(CanonicalType);
+}
+
 
 QualType::DestructionKind QualType::isDestructedTypeImpl(QualType type) {
   switch (type.getObjCLifetime()) {

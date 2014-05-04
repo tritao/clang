@@ -51,6 +51,8 @@ class Stmt;
 class StoredDeclsMap;
 class TranslationUnitDecl;
 class UsingDirectiveDecl;
+class CLIPropertyDecl;
+class CLIEventDecl;
 }
 
 namespace llvm {

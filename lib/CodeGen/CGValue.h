@@ -110,6 +110,7 @@ class LValue {
     Simple,       // This is a normal l-value, use getAddress().
     VectorElt,    // This is a vector element l-value (V[i]), use getVector*
     BitField,     // This is a bitfield l-value, use getBitfield*.
+	CLIHandle,    // This is a CLI handle l-value, use getAddress.
     ExtVectorElt  // This is an extended vector subset, use getExtVectorComp
   } LVType;
 
@@ -192,6 +193,7 @@ public:
   bool isVectorElt() const { return LVType == VectorElt; }
   bool isBitField() const { return LVType == BitField; }
   bool isExtVectorElt() const { return LVType == ExtVectorElt; }
+  bool isCLIHandle() const { return LVType == CLIHandle; }
 
   bool isVolatileQualified() const { return Quals.hasVolatile(); }
   bool isRestrictQualified() const { return Quals.hasRestrict(); }
@@ -285,6 +287,8 @@ public:
     assert(isBitField());
     return *BitFieldInfo;
   }
+  // handle lvalue
+  llvm::Value *getHandle() const { assert(isCLIHandle()); return V; }
 
   static LValue MakeAddr(llvm::Value *address, QualType type,
                          CharUnits alignment, ASTContext &Context,
@@ -333,6 +337,15 @@ public:
     R.V = Addr;
     R.BitFieldInfo = &Info;
     R.Initialize(type, type.getQualifiers(), Alignment);
+    return R;
+  }
+
+  /// \brief Create a new object to represent an handle access.
+  static LValue MakeHandle(llvm::Value *BaseValue, QualType type) {
+    LValue R;
+    R.LVType = CLIHandle;
+    R.V = BaseValue;
+    R.Initialize(type, type.getQualifiers(), CharUnits());
     return R;
   }
 

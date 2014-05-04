@@ -487,6 +487,12 @@ void Parser::Initialize() {
 
   // Prime the lexer look-ahead.
   ConsumeToken();
+  // Initialization for C++/CLI context sensitive keywords recognition.
+  if (getLangOpts().isCPlusPlusCXorCLI()) {
+#define CXX_CX_CONTEXT_KEYWORD(X) \
+    CLIContextKeywords[cli_##X] = &PP.getIdentifierTable().get(#X);
+#include "clang/Basic/TokenKinds.def"
+  }
 }
 
 namespace {

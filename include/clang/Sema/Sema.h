@@ -17,6 +17,7 @@
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclarationName.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExternalASTSource.h"
@@ -194,6 +195,8 @@ namespace sema {
   class PossiblyUnreachableDiag;
   class TemplateDeductionInfo;
 }
+
+class CLISemaContext;
 
 // FIXME: No way to easily map from TemplateTypeParmTypes to
 // TemplateTypeParmDecls, so we have this horrible PointerUnion.
@@ -1054,6 +1057,10 @@ public:
                             SourceLocation Loc, DeclarationName Entity);
   QualType BuildReferenceType(QualType T, bool LValueRef,
                               SourceLocation Loc, DeclarationName Entity);
+  QualType BuildHandleType(QualType T,
+                            SourceLocation Loc, DeclarationName Entity);
+  QualType BuildTrackingReferenceType(QualType T,
+                            SourceLocation Loc, DeclarationName Entity);
   QualType BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
                           Expr *ArraySize, unsigned Quals,
                           SourceRange Brackets, DeclarationName Entity);
@@ -4235,6 +4242,26 @@ public:
   ExprResult BuildCXXNoexceptExpr(SourceLocation KeyLoc, Expr *Operand,
                                   SourceLocation RParen);
 
+ /// ActOnCXXCLIGCNew - Parsed a C++/CLI 'gcnew' expression.
+ ExprResult ActOnCXXCLIGCNew(SourceLocation StartLoc,
+                         Declarator &D,
+                         Expr *Initializer,
+                         Expr *ExtraInitializer);
+ ExprResult BuildCXXCLIGCNew(SourceLocation StartLoc,
+                         QualType AllocType,
+                         TypeSourceInfo *AllocTypeInfo,
+                         SourceRange DirectInitRange,
+                         Expr *Initializer,
+                         Expr *ExtraInitializer);
+  bool CheckCLIGCNewType(QualType AllocType, QualType &InitType,
+                         SourceLocation Loc, SourceRange R);
+
+  ActionResult<CLICustomAttribute*> ActOnCLIAttribute(Scope *S,
+                                          CLIAttributeTarget AttributeTarget,
+                                              SourceLocation TargetLoc,
+                                                   StringRef AttributeName,
+                                                MultiExprArg AttrArgs);
+
   /// \brief Parsed one of the type trait support pseudo-functions.
   ExprResult ActOnTypeTrait(TypeTrait Kind, SourceLocation KWLoc,
                             ArrayRef<ParsedType> Args,
@@ -6548,6 +6575,10 @@ public:
                             const MultiLevelTemplateArgumentList &TemplateArgs,
                                TemplateSpecializationKind TSK);
 
+  Attr *InstantiateUnknownAttr(const Attr *At,
+                               const MultiLevelTemplateArgumentList &TemplateArgs);
+
+
   void InstantiateClassTemplateSpecializationMembers(
                                           SourceLocation PointOfInstantiation,
                            ClassTemplateSpecializationDecl *ClassTemplateSpec,
@@ -8070,6 +8101,31 @@ public:
       DC = CatD->getClassInterface();
     return DC;
   }
+
+  //===--------------------------------------------------------------------===//
+  // C++/CLI Semantic Analysis / Assembly Processing: SemaCLI.cpp.
+
+  typedef llvm::SmallSet<FileID, 16> ManagedAssemblies;
+
+  CLISemaContext *CLIContext;
+
+  CLISemaContext * getCLIContext() { return CLIContext; }
+  CLISemaContext * getCLIContext() const { return CLIContext; }
+
+  // \brief Loads managed assemblies 
+  void LoadManagedAssembly(FileID FID);
+
+  // C++/CLI for each statement.
+  StmtResult ActOnCLIForEachStmt(SourceLocation ForLoc, SourceLocation EachLoc,
+                                 SourceLocation LParenLoc, SourceLocation InLoc,
+                                 Decl *LoopVar, Expr *Assignment,
+                                 SourceLocation RParenLoc, Stmt *Body);
+
+  bool CheckHandleConversion(Expr *From, QualType ToType, CastKind &Kind,
+                             CXXCastPath &BasePath, bool IgnoreBaseAccess);
+  bool CheckBoxingConversion(Expr *From, QualType ToType, CastKind &Kind,
+                             CXXCastPath &BasePath, bool IgnoreBaseAccess);
+
 };
 
 /// \brief RAII object that enters a new expression evaluation context.

@@ -1,4 +1,4 @@
-//===--- SemaExprCXX.cpp - Semantic Analysis for Expressions --------------===//
+﻿//===--- SemaExprCXX.cpp - Semantic Analysis for Expressions --------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,12 +14,14 @@
 
 #include "clang/Sema/SemaInternal.h"
 #include "TypeLocBuilder.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeLoc.h"
@@ -1108,6 +1110,20 @@ Sema::ActOnCXXNew(SourceLocation StartLoc, bool UseGlobal,
   if (D.isInvalidType())
     return ExprError();
 
+  if (getLangOpts().CPlusPlusCLI) {
+    if (CXXRecordDecl *RD = AllocType->getAsCXXRecordDecl()) {
+      if (RD->isCLIRecord() && (RD->getCLIData()->Type != CLI_RT_ValueType)) {
+        DiagnosticsEngine &DE = getDiagnostics();
+        Diag(StartLoc, DE.getCustomDiagID(DiagnosticsEngine::Error,
+          "cannot allocate managed type using 'new', use 'gcnew'"));
+          // FIXME: Add a fix it hint for gcnew
+          // << FixItHint::CreateReplacement());
+        return ExprError();
+      }
+    }
+  }
+
+
   SourceRange DirectInitRange;
   if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer))
     DirectInitRange = List->getSourceRange();
@@ -1123,6 +1139,331 @@ Sema::ActOnCXXNew(SourceLocation StartLoc, bool UseGlobal,
                      DirectInitRange,
                      Initializer,
                      TypeContainsAuto);
+}
+
+/// \brief Parsed a C++/CLI 'gcnew' expression (std 5.3.4).
+///
+/// E.g.:
+/// @code gcnew int @endcode
+/// or
+/// @code gcnew System::Int32(23) @endcode
+///
+/// \param StartLoc The first location of the expression.
+/// \param D The type to be allocated, as well as array dimensions.
+/// \param Initializer The initializing expression or initializer-list, or null
+///   if there is none.
+ExprResult
+Sema::ActOnCXXCLIGCNew(SourceLocation StartLoc,
+                         Declarator &D,
+                         Expr *Initializer,
+                         Expr *ExtraInitializer) {
+  TypeSourceInfo *TInfo = GetTypeForDeclarator(D, /*Scope=*/0);
+  QualType AllocType = TInfo->getType();
+  if (D.isInvalidType())
+    return ExprError();
+
+  SourceRange DirectInitRange;
+  if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer))
+    DirectInitRange = List->getSourceRange();
+
+  return BuildCXXCLIGCNew(StartLoc,
+                     AllocType,
+                     TInfo,
+                     DirectInitRange,
+                     Initializer,
+                     ExtraInitializer);
+}
+
+static bool CheckCLIArraySizeInitializer(Sema &S, Expr *Initializer,
+                                         SourceLocation Loc,
+                                         llvm::SmallVector<llvm::APSInt, 2> &Sizes,
+                                         llvm::APSInt &Total) {
+  Expr **Inits = 0;
+  unsigned NumInits = 0;
+
+  if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer)) {
+    Inits = List->getExprs();
+    NumInits = List->getNumExprs();
+  } else if (InitListExpr *List = dyn_cast_or_null<InitListExpr>(Initializer)) {
+    Inits = List->getInits();
+    NumInits = List->getNumInits();
+  } else
+    llvm_unreachable("Unexpected CLI array initializer type");
+
+  Total = llvm::APSInt(32, 1ULL);
+
+  for (unsigned I = 0; I != NumInits; ++I) {
+    Expr *SizeExpr = Inits[I];
+
+    CLIArrayConvertDiagnoser Diagnoser(SizeExpr);
+    ExprResult ConvertedSize
+      = S.PerformContextualImplicitConversion(Loc, SizeExpr, Diagnoser);
+
+    if (ConvertedSize.isInvalid())
+      return true;
+
+    SizeExpr = ConvertedSize.take();
+    QualType SizeType = SizeExpr->getType();
+    if (!SizeType->isIntegralOrUnscopedEnumerationType())
+      return true;
+
+    llvm::APSInt Result;
+    if (!SizeExpr->EvaluateAsInt(Result, S.getASTContext()))
+      return true;
+
+    if (Result.isNegative()) {
+       S.Diag(SizeExpr->getExprLoc(),
+              S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+              "CLI array dimension cannot be negative"));
+       return true;
+    }
+
+    Result.setIsUnsigned(true);
+    Total *= Result;
+
+    if (Result.uge(~0ULL) || Total.uge(~0ULL)) {
+       S.Diag(SizeExpr->getExprLoc(),
+              S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+              "CLI array dimension is too big"));
+       return true;
+    }
+
+    Sizes.push_back(Result);
+  }
+
+  return false;
+}
+
+static ExprResult CheckCLIArrayExprInitializer(Sema &S, Expr *Initializer,
+                                               QualType AllocType) {
+  const CLIArrayType *ArrayType = AllocType->getAs<CLIArrayType>();
+  QualType ArrayElemType = ArrayType->getElementType();
+
+  InitListExpr *List = dyn_cast<InitListExpr>(Initializer);
+  llvm::SmallVector<clang::Expr *, 4> InitExprs;
+
+  // Convert the initializer expressions to the type expected by the array.
+  for (unsigned I = 0, E = List->getNumInits(); I != E; ++I) {
+    Expr *Expr = List->getInit(I);
+
+    ExprResult Converted = S.PerformImplicitConversion(Expr, ArrayElemType,
+      Sema::AA_Converting, /*AllowExplicit=*/true);
+
+    if (Converted.isInvalid()) {
+      S.Diag(Expr->getExprLoc(),
+             S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+             "cannot initialize CLI array element due to incompatible type"));
+      return ExprError();
+    }
+
+    InitExprs.push_back(Converted.take());
+  }
+
+  return S.ActOnInitList(Initializer->getLocStart(), InitExprs,
+    Initializer->getLocEnd());
+}
+
+ExprResult
+Sema::BuildCXXCLIGCNew(SourceLocation StartLoc,
+                  QualType AllocType,
+                  TypeSourceInfo *AllocTypeInfo,
+                  SourceRange DirectInitRange,
+                  Expr *Initializer,
+                  Expr *ExtraInitializer) {
+  SourceRange TypeRange = AllocTypeInfo->getTypeLoc().getSourceRange();
+
+  CXXNewExpr::InitializationStyle initStyle;
+  if (DirectInitRange.isValid()) {
+    assert(Initializer && "Have parens but no initializer.");
+    initStyle = CXXNewExpr::CallInit;
+  } else if (Initializer && isa<InitListExpr>(Initializer))
+    initStyle = CXXNewExpr::ListInit;
+  else {
+    assert((!Initializer || isa<ImplicitValueInitExpr>(Initializer) ||
+            isa<CXXConstructExpr>(Initializer)) &&
+           "Initializer expression that cannot have been implicitly created.");
+    initStyle = CXXNewExpr::NoInit;
+  }
+
+  Expr **Inits = &Initializer;
+  unsigned NumInits = Initializer ? 1 : 0;
+  if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer)) {
+    assert(initStyle == CXXNewExpr::CallInit && "paren init for non-call init");
+    Inits = List->getExprs();
+    NumInits = List->getNumExprs();
+  }
+#if 0
+  // C++11 [decl.spec.auto]p6. Deduce the type which 'auto' stands in for.
+  AutoType *AT = 0;
+  if (TypeMayContainAuto &&
+      (AT = AllocType->getContainedAutoType()) && !AT->isDeduced()) {
+    if (initStyle == CXXNewExpr::NoInit || NumInits == 0)
+      return ExprError(Diag(StartLoc, diag::err_auto_new_requires_ctor_arg)
+                       << AllocType << TypeRange);
+    if (initStyle == CXXNewExpr::ListInit)
+      return ExprError(Diag(Inits[0]->getLocStart(),
+                            diag::err_auto_new_requires_parens)
+                       << AllocType << TypeRange);
+    if (NumInits > 1) {
+      Expr *FirstBad = Inits[1];
+      return ExprError(Diag(FirstBad->getLocStart(),
+                            diag::err_auto_new_ctor_multiple_expressions)
+                       << AllocType << TypeRange);
+    }
+    Expr *Deduce = Inits[0];
+    TypeSourceInfo *DeducedType = 0;
+    if (DeduceAutoType(AllocTypeInfo, Deduce, DeducedType) == DAR_Failed)
+      return ExprError(Diag(StartLoc, diag::err_auto_new_deduction_failure)
+                       << AllocType << Deduce->getType()
+                       << TypeRange << Deduce->getSourceRange());
+    if (!DeducedType)
+      return ExprError();
+    AllocTypeInfo = DeducedType;
+    AllocType = AllocTypeInfo->getType();
+  }
+#endif
+
+  QualType InitType;
+  if (CheckCLIGCNewType(AllocType, InitType, TypeRange.getBegin(), TypeRange))
+    return ExprError();
+
+  bool IsCLIArray = AllocType->isCLIArrayType();
+  if (IsCLIArray) {
+    if (initStyle == CXXNewExpr::NoInit || NumInits == 0) {
+      unsigned Id = getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+        "managed array allocation needs array size or array initializer");
+      return Diag(StartLoc, Id);
+    }
+  } else if (Initializer && ExtraInitializer) {
+    unsigned Id = getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+      "extra initializer is only valid for managed array allocation");
+    return Diag(ExtraInitializer->getLocStart(), Id);
+  }
+
+  QualType ResultType = AllocType;
+  if (!ResultType->isHandleType()) {
+    ResultType = Context.getHandleType(ResultType);
+  }
+
+  // C++/CLI 24.6
+  // "The context in which an array initializer is used determines the length
+  // of each dimension of the array being initialized. When used in a gcnew
+  // expression, if the expression includes a new-initializer, the dimension
+  // lengths are known from the new-initializer. In all other cases, the
+  // dimensions are deduced from the array initializer. The arrays element
+  // type and rank are always known from the type immediately preceding the
+  // array-init in a gcnew expression."
+  if (IsCLIArray) {
+    Expr *InitExpr = Initializer;
+
+    // Get the dimensions length for the array.
+    llvm::SmallVector<llvm::APSInt, 2> Sizes;
+    llvm::APSInt Total;
+
+    if (ExtraInitializer) {
+      if (CheckCLIArraySizeInitializer(*this, Initializer, StartLoc, Sizes, Total))
+        return ExprError();
+      InitExpr = ExtraInitializer;
+    }
+
+    ExprResult ConvertedInit = CheckCLIArrayExprInitializer(*this, InitExpr,
+                                                            AllocType);
+    if (ConvertedInit.isInvalid())
+      return ExprError();
+
+    InitExpr = ConvertedInit.take();
+
+    Sema &S = *this;
+    TypeSourceInfo *TSInfo = TSInfo = S.Context.getTrivialTypeSourceInfo(ResultType,
+                                                                TypeRange.getBegin());
+    Initializer = new (S.Context) CLIValueClassInitExpr(TSInfo->getType(),
+                                                        TSInfo,
+                                                        CLI_VCIK_ArrayInit,
+                                                        InitExpr);
+
+  } else if (!AllocType->isDependentType() && !Expr::hasAnyTypeDependentArguments(
+    llvm::makeArrayRef(Inits, NumInits))) {
+    // C++11 [expr.new]p15:
+    //   A new-expression that creates an object of type T initializes that
+    //   object as follows:
+    InitializationKind Kind
+    //     - If the new-initializer is omitted, the object is default-
+    //       initialized (8.5); if no initialization is performed,
+    //       the object has indeterminate value
+      = initStyle == CXXNewExpr::NoInit
+          ? InitializationKind::CreateDefault(TypeRange.getBegin())
+    //     - Otherwise, the new-initializer is interpreted according to the
+    //       initialization rules of 8.5 for direct-initialization.
+          : initStyle == CXXNewExpr::ListInit
+              ? InitializationKind::CreateDirectList(TypeRange.getBegin())
+             : InitializationKind::CreateDirect(TypeRange.getBegin(),
+                                                 DirectInitRange.getBegin(),
+                                                 DirectInitRange.getEnd());
+
+    MultiExprArg ExprArgs(Inits, NumInits);
+
+    InitializedEntity Entity
+      = InitializedEntity::InitializeGCNew(StartLoc, InitType);
+    InitializationSequence InitSeq(*this, Entity, Kind, ExprArgs);
+    ExprResult FullInit = InitSeq.Perform(*this, Entity, Kind, ExprArgs);
+    if (FullInit.isInvalid())
+      return ExprError();
+
+    // FullInit is our initializer; strip off CXXBindTemporaryExprs, because
+    // we don't want the initialized object to be destructed.
+    if (CXXBindTemporaryExpr *Binder =
+            dyn_cast_or_null<CXXBindTemporaryExpr>(FullInit.get()))
+      FullInit = Owned(Binder->getSubExpr());
+
+    Initializer = FullInit.take();
+  }
+
+  return Owned(new (Context) CLIGCNewExpr(Context, initStyle, Initializer,
+                                        ResultType, AllocTypeInfo,
+                                        StartLoc, DirectInitRange));
+}
+
+/// \brief Checks that a type is suitable as the allocated type
+/// in a gcnew-expression. For this it has to be a managed type,
+/// (handle or value type).
+bool Sema::CheckCLIGCNewType(QualType AllocType, QualType &InitType,
+                             SourceLocation Loc, SourceRange R) {
+  InitType = AllocType;
+
+  if (const HandleType *Handle = AllocType->getAs<HandleType>()) {
+    AllocType = Handle->getPointeeType();
+    InitType = AllocType;
+  }
+
+  if (const CLIArrayType *Array = AllocType->getAs<CLIArrayType>()) {
+    return false;
+  }
+
+  CXXRecordDecl *RD = AllocType->getAsCXXRecordDecl();
+
+  if (const TemplateSpecializationType *TS = AllocType->getAs<
+    TemplateSpecializationType>()) {
+    TemplateDecl *TD = TS->getTemplateName().getAsTemplateDecl();
+    if (CXXRecordDecl *TRD = dyn_cast<CXXRecordDecl>(TD->getTemplatedDecl()))
+      RD = TRD;
+  }
+
+  if (!RD || !RD->isCLIRecord()) {
+    unsigned Id = getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+      "allocated object is not of managed type");
+    return Diag(Loc, Id);
+  }
+
+  if (!AllocType->isDependentType() &&
+           RequireCompleteType(Loc, AllocType, diag::err_new_incomplete_type,R))
+    return true;
+  else if (RequireNonAbstractType(Loc, AllocType,
+                                  diag::err_allocation_of_abstract_type))
+    return true;
+
+  //CXXConstructorDecl *CD = LookupDefaultConstructor(AllocType->getAsCXXRecordDecl());
+
+  return false;
 }
 
 static bool isLegalArrayNewInitializer(CXXNewExpr::InitializationStyle Style,
@@ -2604,6 +2945,11 @@ static ExprResult BuildCXXCastArgument(Sema &S,
   }
 }
 
+// In SemaCLI.cpp
+namespace clang {
+QualType GetBoxingConversionValueType(Sema &S, QualType FromType);
+} // end namespace clang
+
 /// PerformImplicitConversion - Perform an implicit conversion of the
 /// expression From to the type ToType using the pre-computed implicit
 /// conversion sequence ICS. Returns the converted
@@ -2775,6 +3121,13 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     break;
   }
 
+ case ICK_Literal_To_String: {
+    assert(From->getStmtClass() == Stmt::StringLiteralClass);
+    From = ImpCastExprToType(From, ToType, CK_CLI_StringToHandle, 
+                             VK_RValue, /*BasePath=*/0, CCK).take();
+    break;
+  }
+
   case ICK_Array_To_Pointer:
     FromType = Context.getArrayDecayedType(FromType);
     From = ImpCastExprToType(From, FromType, CK_ArrayToPointerDecay, 
@@ -2940,6 +3293,34 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
                              VK_RValue, /*BasePath=*/0, CCK).take();
     break;
 
+ case ICK_Boxing_Conversion: {
+    CastKind Kind = CK_CLI_BoxValueToHandle;
+    
+    QualType Ty = GetBoxingConversionValueType(*this, From->getType());
+    assert(!Ty.isNull());
+
+    CXXBaseSpecifier *Spec = new (Context) CXXBaseSpecifier(
+      SourceRange(), 0, 0, AS_none, Context.getTrivialTypeSourceInfo(Ty),
+      SourceLocation());
+
+    CXXCastPath BasePath;
+    BasePath.push_back(Spec);
+    From = ImpCastExprToType(From, ToType, Kind, VK_RValue, &BasePath, CCK)
+             .take();
+    break;
+  }
+
+  case ICK_Handle_Conversion: {
+    CastKind Kind = CK_Invalid;
+    CXXCastPath BasePath;
+    if (CheckHandleConversion(From, ToType, Kind, BasePath, CStyle))
+      return ExprError();
+    From = ImpCastExprToType(From, ToType, Kind, VK_RValue, &BasePath, CCK)
+             .take();
+    break;
+  }
+
+
   case ICK_Derived_To_Base: {
     CXXCastPath BasePath;
     if (CheckDerivedToBaseConversion(From->getType(),
@@ -3048,6 +3429,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
   case ICK_Function_To_Pointer:
   case ICK_Qualification:
   case ICK_Num_Conversion_Kinds:
+  case ICK_Literal_To_String:
     llvm_unreachable("Improper second standard conversion");
   }
 
@@ -5260,6 +5642,8 @@ Sema::ActOnStartCXXMemberReference(Scope *S, Expr *Base, SourceLocation OpLoc,
 
     if (OpKind == tok::arrow &&
         (BaseType->isPointerType() || BaseType->isObjCObjectPointerType()))
+      BaseType = BaseType->getPointeeType();
+    if (BaseType->isHandleType())
       BaseType = BaseType->getPointeeType();
   }
 

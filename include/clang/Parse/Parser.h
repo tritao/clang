@@ -1731,7 +1731,8 @@ private:
   void ParseObjCTypeQualifierList(ObjCDeclSpec &DS,
                                   Declarator::TheContext Context);
 
-  void ParseEnumSpecifier(SourceLocation TagLoc, DeclSpec &DS,
+  void ParseEnumSpecifier(tok::TokenKind TokenToAssume,
+	                      SourceLocation TagLoc, DeclSpec &DS,
                           const ParsedTemplateInfo &TemplateInfo,
                           AccessSpecifier AS, DeclSpecContext DSC);
   void ParseEnumBody(SourceLocation StartLoc, Decl *TagDecl);
@@ -2221,7 +2222,7 @@ private:
   //===--------------------------------------------------------------------===//
   // C++ 9: classes [class] and C structs/unions.
   bool isValidAfterTypeSpecifier(bool CouldBeBitfield);
-  void ParseClassSpecifier(tok::TokenKind TagTokKind, SourceLocation TagLoc,
+  bool ParseClassSpecifier(tok::TokenKind TagTokKind, SourceLocation TagLoc,
                            DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo,
                            AccessSpecifier AS, bool EnteringContext,
                            DeclSpecContext DSC, 
@@ -2251,7 +2252,7 @@ private:
                                     SourceLocation &EndLocation);
   void ParseBaseClause(Decl *ClassDecl);
   BaseResult ParseBaseSpecifier(Decl *ClassDecl);
-  AccessSpecifier getAccessSpecifierIfPresent() const;
+  AccessSpecifier getAccessSpecifierIfPresent();
 
   bool ParseUnqualifiedIdTemplateId(CXXScopeSpec &SS,
                                     SourceLocation TemplateKWLoc,
@@ -2363,7 +2364,7 @@ private:
                                UnqualifiedId &TemplateName,
                                bool AllowTypeAnnotation = true);
   void AnnotateTemplateIdTokenAsType();
-  bool IsTemplateArgumentList(unsigned Skip = 0);
+  bool IsTemplateArgumentList(unsigned Skip = 0, unsigned *NumArgs = 0);
   bool ParseTemplateArgumentList(TemplateArgList &TemplateArgs);
   ParsedTemplateArgument ParseTemplateTemplateArgument();
   ParsedTemplateArgument ParseTemplateArgument();
@@ -2396,6 +2397,44 @@ private:
                                          MacroInfo *MacroInfo,
                                          unsigned ArgumentIndex);
   virtual void CodeCompleteNaturalLanguage();
+
+  //===--------------------------------------------------------------------===//
+  // C++/CLI extensions
+
+public:
+  void ParseCLIAttribute(ParsedAttributes &Attrs);
+  ExprResult ParseCLIGCNewExpression(SourceLocation Start);
+  
+  VirtSpecifiers::Specifier isCLIVirtSpecifier(const Token &Tok) const;
+
+  // C++/CLI context sensitive keyword support code.
+  enum CLIContextSensitiveKeywords {
+    cli_not_keyword,
+#define CXX_CX_CONTEXT_KEYWORD(X) cli_##X,
+#include "clang/Basic/TokenKinds.def"
+    cli_NumKeywords
+  };
+  IdentifierInfo *CLIContextKeywords[cli_NumKeywords];
+  IdentifierInfo *getCLIContextKeyword(CLIContextSensitiveKeywords Kw) {
+    return CLIContextKeywords[Kw];
+  }
+
+  // Tries to converts the current token to an access specifier. If AllowExt is
+  // true, then we also try to match the extended C++/CLI access specifiers.
+  AccessSpecifier ConvertTokenToAccessSpecifier(bool AllowExt = true) const;
+
+  // Tries to convert the current token to a tag type specifier.
+  DeclSpec::TST ConvertTokenToTagTypeSpecifier() const;
+
+  // Tries to convert the given token to a basic 
+  CLIContextSensitiveKeywords ConvertTokenToCLITagKeyword(const Token& Tok);
+
+  // Tries to parse a C++/CX tag visibility keyword.
+  bool ParseTagVisibility(AccessSpecifier& Visibility, SourceLocation& Loc);
+
+  // Tries to parse the an aggregate class keyword and inject it into the stream.
+  bool ParseAggregateClassKeywords(const Token& Tok1, const Token& Tok2,
+    Token& Res);
 };
 
 }  // end namespace clang

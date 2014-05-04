@@ -557,6 +557,102 @@ Decl *TemplateDeclInstantiator::VisitMSPropertyDecl(MSPropertyDecl *D) {
   return Property;
 }
 
+Decl *TemplateDeclInstantiator::VisitCLIPropertyDecl(CLIPropertyDecl *D) {
+  bool Invalid = false;
+  QualType DI = D->getType();
+  if (DI->isInstantiationDependentType() || DI->isVariablyModifiedType())  {
+    DI = SemaRef.SubstType(DI, TemplateArgs,
+                           D->getLocation(), D->getDeclName());
+    if (DI.isNull()) {
+      Invalid = true;
+    }
+  } else {
+    SemaRef.MarkDeclarationsReferencedInType(D->getLocation(), DI);
+  }
+
+  CLIPropertyDecl *Prop = CLIPropertyDecl::Create(SemaRef.Context,
+    cast<RecordDecl>(Owner), D->getDeclName(), DI);
+  
+  if (D->GetMethod)
+    Prop->GetMethod = cast<CXXMethodDecl>(VisitCXXMethodDecl(D->GetMethod));
+
+  if (D->SetMethod)
+    Prop->SetMethod = cast<CXXMethodDecl>(VisitCXXMethodDecl(D->SetMethod));
+
+  llvm::SmallVector<QualType, 2> SubstIndexerTypes;
+  for (unsigned I = 0, E = D->IndexerTypes.size(); I != E; ++I) {
+    QualType &Ty = D->IndexerTypes[I];
+    QualType SubstTy = SemaRef.SubstType(Ty, TemplateArgs,
+                           D->getLocation(), D->getDeclName());
+    SubstIndexerTypes.push_back(SubstTy);
+  }
+  Prop->IndexerTypes = SubstIndexerTypes;
+
+  if (!Prop) {
+    cast<Decl>(Owner)->setInvalidDecl();
+    return 0;
+  }
+
+  SemaRef.InstantiateAttrs(TemplateArgs, D, Prop, LateAttrs, StartingScope);
+
+  if (Invalid)
+    Prop->setInvalidDecl();
+
+  Prop->setImplicit(D->isImplicit());
+  Prop->setAccess(D->getAccess());
+  Owner->addDecl(Prop);
+
+  return Prop;
+}
+
+Decl *TemplateDeclInstantiator::VisitCLIEventDecl(CLIEventDecl *D) {
+  bool Invalid = false;
+  QualType DI = D->getType();
+  if (DI->isInstantiationDependentType() || DI->isVariablyModifiedType())  {
+    DI = SemaRef.SubstType(DI, TemplateArgs,
+                           D->getLocation(), D->getDeclName());
+    if (DI.isNull()) {
+      Invalid = true;
+    }
+  } else {
+    SemaRef.MarkDeclarationsReferencedInType(D->getLocation(), DI);
+  }
+
+  CLIEventDecl *Prop = CLIEventDecl::Create(SemaRef.Context,
+    cast<RecordDecl>(Owner), D->getDeclName(), DI);
+  
+  //if (D->GetMethod)
+  //  Prop->GetMethod = cast<CXXMethodDecl>(VisitCXXMethodDecl(D->GetMethod));
+
+  //if (D->SetMethod)
+  //  Prop->SetMethod = cast<CXXMethodDecl>(VisitCXXMethodDecl(D->SetMethod));
+
+  //llvm::SmallVector<QualType, 2> SubstIndexerTypes;
+  //for (unsigned I = 0, E = D->IndexerTypes.size(); I != E; ++I) {
+  //  QualType &Ty = D->IndexerTypes[I];
+  //  QualType SubstTy = SemaRef.SubstType(Ty, TemplateArgs,
+  //                         D->getLocation(), D->getDeclName());
+  //  SubstIndexerTypes.push_back(SubstTy);
+  //}
+  //Prop->IndexerTypes = SubstIndexerTypes;
+
+  if (!Prop) {
+    cast<Decl>(Owner)->setInvalidDecl();
+    return 0;
+  }
+
+  SemaRef.InstantiateAttrs(TemplateArgs, D, Prop, LateAttrs, StartingScope);
+
+  if (Invalid)
+    Prop->setInvalidDecl();
+
+  Prop->setImplicit(D->isImplicit());
+  Prop->setAccess(D->getAccess());
+  Owner->addDecl(Prop);
+
+  return Prop;
+}
+
 Decl *TemplateDeclInstantiator::VisitIndirectFieldDecl(IndirectFieldDecl *D) {
   NamedDecl **NamedChain =
     new (SemaRef.Context)NamedDecl*[D->getChainingSize()];
@@ -1642,6 +1738,16 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
 
   if (D->isInlined())
     Method->setImplicitlyInline();
+
+  if (SemaRef.getLangOpts().CPlusPlusCLI && D->isCLIMethod()) {
+    Method->setCLIData(D->getCLIData());
+    QualType Ret = D->getType();
+    if (const TemplateTypeParmType *TTy = Ret->getAs<TemplateTypeParmType>()) {
+      unsigned Index = TTy->getIndex() + 1;
+      Method->getCLIData()->setReturnTemplateParamIndex(Index);
+    }
+  }
+
 
   if (QualifierLoc)
     Method->setQualifierInfo(QualifierLoc);

@@ -1505,6 +1505,9 @@ private:
   void HandleImportDirective(SourceLocation HashLoc, Token &Tok);
   void HandleMicrosoftImportDirective(Token &Tok);
 
+  // C++/CLI #using directive.
+  void HandleUsingDirective(SourceLocation HashLoc, Token &Tok);
+
   // Module inclusion testing.
   /// \brief Find the module for the source or header file that \p FilenameLoc
   /// points to.

@@ -837,6 +837,8 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::Decayed:
     case Type::Pointer:
     case Type::BlockPointer:
+    case Type::Handle:
+    case Type::TrackingReference:
     case Type::LValueReference:
     case Type::RValueReference:
     case Type::MemberPointer:
@@ -858,6 +860,7 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::ObjCObject:
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
+	case Type::CLIArray:
     case Type::Atomic:
       llvm_unreachable("type is illegal as a nested name specifier");
 
@@ -1717,6 +1720,7 @@ CXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO, unsigned Arity) {
   case OO_Conditional: Out << "qu"; break;
 
   case OO_None:
+  case OO_GC_New:
   case NUM_OVERLOADED_OPERATORS:
     llvm_unreachable("Not an overloaded operator");
   }
@@ -2135,6 +2139,20 @@ void CXXNameMangler::mangleType(const ObjCObjectPointerType *T) {
   mangleType(T->getPointeeType());
 }
 
+void CXXNameMangler::mangleType(const HandleType *T) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle handles yet");
+  Diags.Report(DiagID);
+}
+
+void CXXNameMangler::mangleType(const TrackingReferenceType *T) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle tracking references yet");
+  Diags.Report(DiagID);
+}
+
 // <type> ::= R <type>   # reference-to
 void CXXNameMangler::mangleType(const LValueReferenceType *T) {
   Out << 'R';
@@ -2447,6 +2465,14 @@ void CXXNameMangler::mangleType(const AtomicType *T) {
   mangleType(T->getValueType());
 }
 
+// C++/CLI extensions
+void CXXNameMangler::mangleType(const CLIArrayType *T) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                   "cannot mangle C++/CLI types");
+  Diags.Report(DiagID);
+}
+
 void CXXNameMangler::mangleIntegerLiteral(QualType T,
                                           const llvm::APSInt &Value) {
   //  <expr-primary> ::= L <type> <value number> E # integer literal
@@ -2557,6 +2583,7 @@ recurse:
   case Expr::ParenListExprClass:
   case Expr::LambdaExprClass:
   case Expr::MSPropertyRefExprClass:
+  case Expr::CLIGCNewExprClass:
     llvm_unreachable("unexpected statement kind");
 
   // FIXME: invent manglings for all these.

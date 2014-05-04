@@ -224,6 +224,8 @@ public:
   decl_iterator decl_end()   const { return DeclsInScope.end(); }
   bool decl_empty()          const { return DeclsInScope.empty(); }
 
+  DeclSetTy &GetDecls() { return DeclsInScope; }
+
   void AddDecl(Decl *D) {
     DeclsInScope.insert(D);
   }

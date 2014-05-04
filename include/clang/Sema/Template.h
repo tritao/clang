@@ -426,6 +426,7 @@ namespace clang {
                             TemplateParameterList *TemplateParams);
     Decl *VisitDecl(Decl *D);
     Decl *VisitVarDecl(VarDecl *D, bool InstantiatingVarTemplate);
+	//Decl *VisitCLIPropertyDecl(CLIPropertyDecl *D);
 
     // Enable late instantiation of attributes.  Late instantiated attributes
     // will be stored in LA.

@@ -74,6 +74,7 @@ def m_hexagon_Features_Group  : OptionGroup<"<m hexagon features group>">, Group
 def m_arm_Features_Group  : OptionGroup<"<m arm features group>">, Group<m_Group>;
 def m_aarch64_Features_Group  : OptionGroup<"<m aarch64 features group>">, Group<m_Group>;
 def m_ppc_Features_Group  : OptionGroup<"<m ppc features group>">, Group<m_Group>;
+def cxx_cli_Group         : OptionGroup<"<C++/CLI group>">;
 def u_Group               : OptionGroup<"<u group>">;
 
 def pedantic_Group        : OptionGroup<"<pedantic group>">,
@@ -572,6 +573,10 @@ def fdelayed_template_parsing : Flag<["-"], "fdelayed-template-parsing">, Group<
   HelpText<"Parse templated function definitions at the end of the "
            "translation unit">,  Flags<[CC1Option]>;
 def fms_memptr_rep_EQ : Joined<["-"], "fms-memptr-rep=">, Group<f_Group>, Flags<[CC1Option]>;
+def fms_cx_extensions : Flag<["-"], "fms-cx-extensions">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Enables the C++/CX language extensions">;
+def fms_cli_extensions : Flag<["-"], "fms-cli-extensions">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Enables the C++/CLI language extensions">;
 def fmodules_cache_path : Joined<["-"], "fmodules-cache-path=">, Group<i_Group>,
   Flags<[DriverOption, CC1Option]>, MetaVarName<"<directory>">,
   HelpText<"Specify the module cache path">;

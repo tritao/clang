@@ -20,6 +20,7 @@
 #include "CodeGenModule.h"
 #include "TargetInfo.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/Hashing.h"
@@ -1276,6 +1277,9 @@ RValue CodeGenFunction::EmitLoadOfLValue(LValue LV, SourceLocation Loc) {
   if (LV.isExtVectorElt())
     return EmitLoadOfExtVectorElementLValue(LV);
 
+  if (LV.isCLIHandle())
+    return RValue::get(LV.getHandle());
+
   assert(LV.isBitField() && "Unknown LValue type!");
   return EmitLoadOfBitfieldLValue(LV);
 }
@@ -2243,6 +2247,13 @@ static const Expr *isSimpleArrayDecayOperand(const Expr *E) {
   return SubExpr;
 }
 
+static LValue EmitCLIArraySubscriptExpr(CodeGenFunction &CGF,
+                                        const CLIArrayType *ArrTy,
+                                        llvm::Value *Base,
+                                        llvm::Value *Idx,
+                                        bool IsStore,
+                                        RValue RV);
+
 LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
                                                bool Accessed) {
   // The index must always be an integer, which is not an aggregate.  Emit it.
@@ -2252,6 +2263,14 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
 
   if (SanOpts->ArrayBounds)
     EmitBoundsCheck(E, E->getBase(), Idx, IdxTy, Accessed);
+
+  if (const HandleType *HT = E->getBase()->getType()->getAs<HandleType>()) {
+    LValue LHS = EmitLValue(E->getBase());
+
+    const CLIArrayType *ArrTy = HT->getPointeeType()->getAs<CLIArrayType>();
+    return EmitCLIArraySubscriptExpr(*this, ArrTy, LHS.getAddress(), Idx,
+      /*IsStore=*/false, RValue());
+  }
 
   // If the base is a vector type, then we are forming a vector element lvalue
   // with this subscript.
@@ -2839,6 +2858,8 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
   }
   case CK_ZeroToOCLEvent:
     llvm_unreachable("NULL to OpenCL event lvalue cast is not valid");
+  case CK_CLI_StringToHandle:
+    break;  
   }
 
   llvm_unreachable("Unhandled lvalue cast kind?");
@@ -2959,6 +2980,34 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
                   ReturnValue, E->arg_begin(), E->arg_end(), TargetDecl);
 }
 
+static LValue EmitCLIArraySubscriptExpr(CodeGenFunction &CGF,
+                                        const CLIArrayType *ArrTy,
+                                        llvm::Value *Base,
+                                        llvm::Value *Idx,
+                                        bool IsStore,
+                                        RValue RV) {
+  llvm::Value *Handle = CGF.Builder.CreatePointerCast(Base,
+    llvm::Type::getInt8PtrTy(CGF.getLLVMContext()));
+
+  llvm::SmallVector<llvm::Value *, 4> CallArgs;
+  CallArgs.push_back(Handle);
+  if (IsStore)
+    CallArgs.push_back(RV.getScalarVal());
+  CallArgs.push_back(Idx);
+
+  llvm::Function *Fn = CGF.CGM.getIntrinsic(IsStore ?
+    llvm::Intrinsic::cil_starr : llvm::Intrinsic::cil_ldarr);
+  llvm::Instruction *CallInst = CGF.Builder.CreateCall(Fn, CallArgs);
+
+  if (IsStore)
+    return LValue::MakeHandle(CallInst, ArrTy->getElementType());
+
+  llvm::Type *DstTy = CGF.ConvertType(ArrTy->getElementType());
+  llvm::Value *Cast = CGF.Builder.CreatePointerCast(CallInst, DstTy);
+
+  return LValue::MakeHandle(Cast, ArrTy->getElementType());
+}
+
 LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
   // Comma expressions just emit their LHS then their RHS as an l-value.
   if (E->getOpcode() == BO_Comma) {
@@ -2993,6 +3042,25 @@ LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
     }
 
     RValue RV = EmitAnyExpr(E->getRHS());
+
+    // Handle CLI arrays subscriptions right away because they don't use the
+    // LLVM store instruction but rather an CIL backend load/store intrinsic.
+    if (const ArraySubscriptExpr *A = dyn_cast<ArraySubscriptExpr>(
+        E->getLHS())) {
+      if (const HandleType *HT = A->getBase()->getType()->getAs<HandleType>()) {
+        LValue LHS = EmitLValue(A->getBase());
+
+        // The index must always be an integer, which is not an aggregate.
+        llvm::Value *Idx = EmitScalarExpr(A->getIdx());
+        QualType IdxTy  = A->getIdx()->getType();
+        bool IdxSigned = IdxTy->isSignedIntegerOrEnumerationType();
+
+        const CLIArrayType *ArrTy = HT->getPointeeType()->getAs<CLIArrayType>();
+        return EmitCLIArraySubscriptExpr(*this, ArrTy, LHS.getAddress(), Idx,
+          /*IsStore=*/true, RV);
+      }
+    }
+
     LValue LV = EmitCheckedLValue(E->getLHS(), TCK_Store);
     EmitStoreThroughLValue(RV, LV);
     return LV;

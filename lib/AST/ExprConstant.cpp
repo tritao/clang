@@ -7151,6 +7151,7 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
   case CK_ZeroToOCLEvent:
   case CK_NonAtomicToAtomic:
   case CK_AddressSpaceConversion:
+  case CK_CLI_StringToHandle:
     llvm_unreachable("invalid cast kind for integral value");
 
   case CK_BitCast:
@@ -7624,6 +7625,7 @@ bool ComplexExprEvaluator::VisitCastExpr(const CastExpr *E) {
   case CK_ZeroToOCLEvent:
   case CK_NonAtomicToAtomic:
   case CK_AddressSpaceConversion:
+  case CK_CLI_StringToHandle:
     llvm_unreachable("invalid cast kind for complex value");
 
   case CK_LValueToRValue:
@@ -8338,6 +8340,7 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
   case Expr::PseudoObjectExprClass:
   case Expr::AtomicExprClass:
   case Expr::LambdaExprClass:
+  case Expr::CLIGCNewExprClass:
     return ICEDiag(IK_NotICE, E->getLocStart());
 
   case Expr::InitListExprClass: {
@@ -8627,6 +8630,13 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
     return CheckICE(cast<CXXDefaultInitExpr>(E)->getExpr(), Ctx);
   case Expr::ChooseExprClass: {
     return CheckICE(cast<ChooseExpr>(E)->getChosenSubExpr(), Ctx);
+  }
+  case Expr::CLIValueClassInitExprClass: {
+    const CLIValueClassInitExpr *VE = cast<CLIValueClassInitExpr>(E);
+    if (VE->getInitKind() == CLI_VCIK_CopyInit)
+      return CheckICE(VE->getInitExpr(), Ctx);
+    else 
+      return NoDiag();
   }
   }
 

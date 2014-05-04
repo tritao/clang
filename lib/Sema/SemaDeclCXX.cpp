@@ -36,6 +36,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
@@ -6646,6 +6647,17 @@ Decl *Sema::ActOnStartNamespaceDef(Scope *NamespcScope,
       if (IsInline != PrevNS->isInline())
         DiagnoseNamespaceInlineMismatch(*this, NamespaceLoc, Loc, II,
                                         &IsInline, PrevNS);
+	   if (getLangOpts().CPlusPlusCLI &&
+          PrevNS == getCLIContext()->CLINamespace) {
+        // 17.1 Reserved namespaces
+        // The namespace cli is reserved. The only elements permitted
+        // in this namespace shall be those defined by the language 
+        // specification.
+        DiagnosticsEngine &DE = getDiagnostics();
+        Diag(NamespaceLoc, DE.getCustomDiagID( DiagnosticsEngine::Error,
+          "redefinition of language namespace is not allowed"));
+        IsInvalid = true;
+      }
     } else if (PrevDecl) {
       // This is an invalid name redefinition.
       Diag(Loc, diag::err_redefinition_different_kind)
@@ -8200,6 +8212,12 @@ struct DeclaringSpecialMember {
 
 CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
                                                      CXXRecordDecl *ClassDecl) {
+
+  if (getLangOpts().CPlusPlusCLI && ClassDecl->getTypeForDecl()->isCLIValueType()) {
+    llvm_unreachable("C++/CLI value classes do not declare implicit constructors");
+    return 0;
+  }
+
   // C++ [class.ctor]p5:
   //   A default constructor for a class X is a constructor of class X
   //   that can be called without an argument. If there is no

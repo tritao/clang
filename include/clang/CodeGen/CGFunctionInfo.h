@@ -82,11 +82,12 @@ private:
   bool BoolData1;
   bool InReg;
   bool PaddingInReg;
+  bool IsUnsigned;
 
   ABIArgInfo(Kind K, llvm::Type *TD, unsigned UI, bool B0, bool B1, bool IR,
              bool PIR, llvm::Type* P)
     : TheKind(K), TypeData(TD), PaddingType(P), UIntData(UI), BoolData0(B0),
-      BoolData1(B1), InReg(IR), PaddingInReg(PIR) {}
+      BoolData1(B1), InReg(IR), PaddingInReg(PIR), IsUnsigned(0)  {}
 
 public:
   ABIArgInfo() : TheKind(Direct), TypeData(0), UIntData(0) {}
@@ -201,6 +202,14 @@ public:
   void setInAllocaSRet(bool SRet) {
     assert(TheKind == InAlloca && "Invalid kind!");
     BoolData0 = SRet;
+  }
+
+  bool isUnsigned() const {
+    return IsUnsigned;
+  }
+
+  void setUnsigned(bool V) {
+    IsUnsigned = V;
   }
 
   void dump() const;

@@ -16,6 +16,7 @@
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclLookups.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
@@ -572,6 +573,12 @@ void Sema::ForceDeclarationOfImplicitMembers(CXXRecordDecl *Class) {
   // If the copy constructor has not yet been declared, do so now.
   if (Class->needsImplicitCopyConstructor())
     DeclareImplicitCopyConstructor(Class);
+
+  // C++/CLI 22.5 Constructors
+  // "A value class having a default constructor or a copy constructor is
+  // ill-formed."
+  if (Class->isCLIRecord() && Class->getTypeForDecl()->isCLIValueType())
+    return;
 
   // If the copy assignment operator has not yet been declared, do so now.
   if (Class->needsImplicitCopyAssignment())
@@ -2221,10 +2228,15 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       T = cast<BlockPointerType>(T)->getPointeeType().getTypePtr();
       continue;
 
+   case Type::Handle:
+      T = cast<HandleType>(T)->getPointeeType().getTypePtr();
+      continue;
+
     // References aren't covered by the standard, but that's such an
     // obvious defect that we cover them anyway.
     case Type::LValueReference:
     case Type::RValueReference:
+	case Type::TrackingReference:
       T = cast<ReferenceType>(T)->getPointeeType().getTypePtr();
       continue;
 
@@ -2246,6 +2258,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::ObjCObjectPointer:
       Result.Namespaces.insert(Result.S.Context.getTranslationUnitDecl());
       break;
+
+    case Type::CLIArray:
+      T = cast<CLIArrayType>(T)->getElementType().getTypePtr();
+      continue;
 
     // Atomic types are just wrappers; use the associations of the
     // contained type.
@@ -2644,6 +2660,8 @@ CXXConstructorDecl *Sema::LookupMovingConstructor(CXXRecordDecl *Class,
 
 /// \brief Look up the constructors for the given class.
 DeclContext::lookup_result Sema::LookupConstructors(CXXRecordDecl *Class) {
+  if (Class->isCLIRecord() && Class->getCLIData()->Type == CLI_RT_ValueType)
+    goto Lookup;
   // If the implicit constructors have not yet been declared, do so now.
   if (CanDeclareSpecialMemberFunction(Class)) {
     if (Class->needsImplicitDefaultConstructor())
@@ -2653,7 +2671,7 @@ DeclContext::lookup_result Sema::LookupConstructors(CXXRecordDecl *Class) {
     if (getLangOpts().CPlusPlus11 && Class->needsImplicitMoveConstructor())
       DeclareImplicitMoveConstructor(Class);
   }
-
+Lookup:
   CanQualType T = Context.getCanonicalType(Context.getTypeDeclType(Class));
   DeclarationName Name = Context.DeclarationNames.getCXXConstructorName(T);
   return Class->lookup(Name);

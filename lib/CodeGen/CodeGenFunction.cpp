@@ -111,6 +111,9 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
     case Type::FunctionNoProto:
     case Type::Enum:
     case Type::ObjCObjectPointer:
+    case Type::Handle:
+    case Type::TrackingReference:
+    case Type::CLIArray:
       return TEK_Scalar;
 
     // Complexes.
@@ -632,8 +635,15 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
   PrologueCleanupDepth = EHStack.stable_begin();
   EmitFunctionProlog(*CurFnInfo, CurFn, Args);
 
+  CLIDefinitionData *CLIData = 0;
+  if (const CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(D)) {
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(MD->getParent());
+    CLIData = RD->getCLIData();
+  }
+
   if (D && isa<CXXMethodDecl>(D) && cast<CXXMethodDecl>(D)->isInstance()) {
-    CGM.getCXXABI().EmitInstanceFunctionProlog(*this);
+    if (!CLIData)
+      CGM.getCXXABI().EmitInstanceFunctionProlog(*this);
     const CXXMethodDecl *MD = cast<CXXMethodDecl>(D);
     if (MD->getParent()->isLambda() &&
         MD->getOverloadedOperator() == OO_Call) {
@@ -749,12 +759,20 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   FunctionArgList Args;
   QualType ResTy = FD->getReturnType();
 
+  CLIDefinitionData *CLIData = 0;
+  if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(MD->getParent());
+    CLIData = RD->getCLIData();
+  }
+
   CurGD = GD;
   const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD);
   if (MD && MD->isInstance()) {
-    if (CGM.getCXXABI().HasThisReturn(GD))
-      ResTy = MD->getThisType(getContext());
-    CGM.getCXXABI().buildThisParam(*this, Args);
+    if (!CLIData){
+      if (CGM.getCXXABI().HasThisReturn(GD))
+        ResTy = MD->getThisType(getContext());
+      CGM.getCXXABI().buildThisParam(*this, Args);
+	}
   }
 
   for (unsigned i = 0, e = FD->getNumParams(); i != e; ++i)
@@ -1444,6 +1462,14 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       type = cast<MemberPointerType>(ty)->getPointeeType();
       break;
 
+    case Type::Handle:
+      type = cast<HandleType>(ty)->getPointeeType();
+      break;
+
+    case Type::TrackingReference:
+      type = cast<TrackingReferenceType>(ty)->getPointeeType();
+      break;
+ 
     case Type::ConstantArray:
     case Type::IncompleteArray:
       // Losing element qualification here is fine.
@@ -1487,6 +1513,10 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       type = vat->getElementType();
       break;
     }
+
+    case Type::CLIArray:
+      type = cast<CLIArrayType>(ty)->getElementType();
+      break;
 
     case Type::FunctionProto:
     case Type::FunctionNoProto:

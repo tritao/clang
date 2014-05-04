@@ -82,6 +82,9 @@ public:
   /// User-specified system header prefixes.
   std::vector<SystemHeaderPrefix> SystemHeaderPrefixes;
 
+  /// User specified assembly include entries (C++/CLI).
+  std::vector<Entry> AssemblyEntries;
+ 
   /// The directory which holds the compiler resource files (builtin includes,
   /// etc.).
   std::string ResourceDir;

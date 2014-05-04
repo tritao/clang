@@ -196,6 +196,10 @@ void StmtProfiler::VisitCXXForRangeStmt(const CXXForRangeStmt *S) {
   VisitStmt(S);
 }
 
+void StmtProfiler::VisitCLIForEachStmt(const CLIForEachStmt *S) {
+  VisitStmt(S);
+}
+
 void StmtProfiler::VisitMSDependentExistsStmt(const MSDependentExistsStmt *S) {
   VisitStmt(S);
   ID.AddBoolean(S->isIfExists());
@@ -212,6 +216,10 @@ void StmtProfiler::VisitSEHFinallyStmt(const SEHFinallyStmt *S) {
 }
 
 void StmtProfiler::VisitSEHExceptStmt(const SEHExceptStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitSEHLeaveStmt(const SEHLeaveStmt *S) {
   VisitStmt(S);
 }
 
@@ -572,6 +580,7 @@ static Stmt::StmtClass DecodeOperatorCall(const CXXOperatorCallExpr *S,
   case OO_Delete:
   case OO_Array_New:
   case OO_Array_Delete:
+  case OO_GC_New:
   case OO_Arrow:
   case OO_Call:
   case OO_Conditional:
@@ -929,6 +938,22 @@ void StmtProfiler::VisitCXXNewExpr(const CXXNewExpr *S) {
   ID.AddBoolean(S->isGlobalNew());
   ID.AddBoolean(S->isParenTypeId());
   ID.AddInteger(S->getInitializationStyle());
+}
+
+void StmtProfiler::VisitCLIGCNewExpr(const CLIGCNewExpr *S) {
+  VisitExpr(S);
+  VisitType(S->getAllocatedType());
+  ID.AddInteger(S->getInitializationStyle());
+}
+
+void StmtProfiler::VisitCLIValueClassInitExpr(const CLIValueClassInitExpr *S) {
+  VisitExpr(S);
+  ID.AddInteger(S->getInitKind());
+}
+
+void StmtProfiler::VisitCLIPropertyRefExpr(const CLIPropertyRefExpr *S) {
+  VisitExpr(S);
+  VisitDecl(S->getProperty());
 }
 
 void

@@ -15,6 +15,7 @@
 #include "clang/Serialization/ASTReader.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Lex/Token.h"
@@ -1170,6 +1171,15 @@ void ASTStmtReader::VisitCXXForRangeStmt(CXXForRangeStmt *S) {
   S->setBody(Reader.ReadSubStmt());
 }
 
+void ASTStmtReader::VisitCLIForEachStmt(CLIForEachStmt *S) {
+  VisitStmt(S);
+  S->setForLoc(ReadSourceLocation(Record, Idx));
+  S->setEachLoc(ReadSourceLocation(Record, Idx));
+  S->setInLoc(ReadSourceLocation(Record, Idx));
+  S->setRParenLoc(ReadSourceLocation(Record, Idx));
+  S->setBody(Reader.ReadSubStmt());
+}
+
 void ASTStmtReader::VisitMSDependentExistsStmt(MSDependentExistsStmt *S) {
   VisitStmt(S);
   S->KeywordLoc = ReadSourceLocation(Record, Idx);
@@ -1376,6 +1386,26 @@ void ASTStmtReader::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   E->OperatorDelete = ReadDeclAs<FunctionDecl>(Record, Idx);
   E->Argument = Reader.ReadSubExpr();
   E->Loc = ReadSourceLocation(Record, Idx);
+}
+
+void ASTStmtReader::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
+  VisitExpr(E);
+  E->StoredInitializationStyle = Record[Idx++];
+  E->AllocatedTypeInfo = GetTypeSourceInfo(Record, Idx);
+  E->StartLoc = ReadSourceLocation(Record, Idx);
+  E->DirectInitRange = ReadSourceRange(Record, Idx);
+}
+
+void ASTStmtReader::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  VisitExpr(E);
+  E->TypeInfo = GetTypeSourceInfo(Record, Idx);
+  E->InitKind = (CLIValueClassInitKind) Record[Idx++];
+  E->InitExpr = Reader.ReadSubExpr();
+}
+
+void ASTStmtReader::VisitCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  VisitExpr(E);
+  E->Property = ReadDeclAs<CLIPropertyDecl>(Record, Idx);
 }
 
 void ASTStmtReader::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
@@ -2219,6 +2249,9 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case STMT_SEH_TRY:
       S = new (Context) SEHTryStmt(Empty);
       break;
+    case STMT_SEH_LEAVE:
+      S = new (Context) SEHLeaveStmt(Empty);
+      break;
     case STMT_CXX_CATCH:
       S = new (Context) CXXCatchStmt(Empty);
       break;
@@ -2230,6 +2263,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case STMT_CXX_FOR_RANGE:
       S = new (Context) CXXForRangeStmt(Empty);
+      break;
+
+    case STMT_CLI_FOR_EACH:
+      S = new (Context) CLIForEachStmt(Empty);
       break;
 
     case STMT_MS_DEPENDENT_EXISTS:
@@ -2354,6 +2391,15 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       break;
     case EXPR_CXX_DELETE:
       S = new (Context) CXXDeleteExpr(Empty);
+      break;
+    case EXPR_CLI_GCNEW:
+      S = new (Context) CLIGCNewExpr(Empty);
+      break;
+    case EXPR_CLI_VALUE_CLASS_INIT:
+      S = new (Context) CLIValueClassInitExpr(Empty);
+      break;
+    case EXPR_CLI_PROPERTY_REF:
+      S = new (Context) CLIPropertyRefExpr(Empty);
       break;
     case EXPR_CXX_PSEUDO_DESTRUCTOR:
       S = new (Context) CXXPseudoDestructorExpr(Empty);

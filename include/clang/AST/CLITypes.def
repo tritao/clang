@@ -1,0 +1,49 @@
+//===--- CLITypes.def - C++/CLI Types ---------------------------*- C++ -*-===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef CLI_TYPE
+#define CLI_TYPE(X)
+#endif
+
+#ifndef CLI_PRIMITIVE_TYPE
+#define CLI_PRIMITIVE_TYPE(X) CLI_TYPE(X)
+#endif
+
+//===----------------------------------------------------------------------===//
+// CLI primitive types.
+//===----------------------------------------------------------------------===//
+
+CLI_PRIMITIVE_TYPE(Void)
+CLI_PRIMITIVE_TYPE(Boolean)
+CLI_PRIMITIVE_TYPE(Char)
+CLI_PRIMITIVE_TYPE(Byte)
+CLI_PRIMITIVE_TYPE(SByte)
+CLI_PRIMITIVE_TYPE(Int16)
+CLI_PRIMITIVE_TYPE(UInt16)
+CLI_PRIMITIVE_TYPE(Int32)
+CLI_PRIMITIVE_TYPE(UInt32)
+CLI_PRIMITIVE_TYPE(Int64)
+CLI_PRIMITIVE_TYPE(UInt64)
+CLI_PRIMITIVE_TYPE(Single)
+CLI_PRIMITIVE_TYPE(Double)
+CLI_PRIMITIVE_TYPE(TypedReference)
+CLI_PRIMITIVE_TYPE(IntPtr)
+CLI_PRIMITIVE_TYPE(UIntPtr)
+
+//===----------------------------------------------------------------------===//
+// CLI types.
+//===----------------------------------------------------------------------===//
+
+CLI_TYPE(Object)
+CLI_TYPE(String)
+CLI_TYPE(ValueType)
+CLI_TYPE(Array)
+
+#undef CLI_PRIMITIVE_TYPE
+#undef CLI_TYPE

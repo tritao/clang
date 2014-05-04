@@ -202,6 +202,8 @@ namespace clang {
       Include,
       /// \brief An Objective-C \c \#import directive.
       Import,
+	  /// \brief A C++/CLI \c \#using directive.
+      Using,
       /// \brief A GNU \c \#include_next directive.
       IncludeNext,
       /// \brief A Clang \c \#__include_macros directive.

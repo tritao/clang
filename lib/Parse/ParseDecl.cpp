@@ -1470,7 +1470,8 @@ bool Parser::MightBeDeclarator(unsigned Context) {
              (getLangOpts().CPlusPlus && Context == Declarator::FileContext);
 
     case tok::identifier: // Possible virt-specifier.
-      return getLangOpts().CPlusPlus11 && isCXX11VirtSpecifier(NextToken());
+      return (getLangOpts().CPlusPlus11 && isCXX11VirtSpecifier(NextToken()))
+		  || (getLangOpts().CPlusPlusCLI && isCLIVirtSpecifier(NextToken()));
 
     default:
       return false;
@@ -2121,7 +2122,7 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
 
       // Parse this as a tag as if the missing tag were present.
       if (TagKind == tok::kw_enum)
-        ParseEnumSpecifier(Loc, DS, TemplateInfo, AS, DSC_normal);
+        ParseEnumSpecifier(TagKind,Loc, DS, TemplateInfo, AS, DSC_normal);
       else
         ParseClassSpecifier(TagKind, Loc, DS, TemplateInfo, AS,
                             /*EnteringContext*/ false, DSC_normal, Attrs);
@@ -2424,6 +2425,35 @@ Parser::DiagnoseMissingSemiAfterTagDefinition(DeclSpec &DS, AccessSpecifier AS,
   ParseDeclarationSpecifiers(DS, NotATemplate, AS, DSContext, LateAttrs);
   return false;
 }
+
+// Returns if the token is the start of a class key.
+static bool isClassKey(const Token &Tok) {
+  switch(Tok.getKind()) {
+  default: return false;
+  case tok::kw_class:
+  case tok::kw_struct:
+  case tok::kw_union: 
+  case tok::kw_ref_class:
+  case tok::kw_ref_struct:
+  case tok::kw_value_class:
+  case tok::kw_value_struct:
+  case tok::kw_interface_class:
+  case tok::kw_interface_struct:
+    return true;
+  }
+}
+
+// Returns if the token is the start of an enum key.
+static bool isEnumKey(const Token& Tok) {
+  switch(Tok.getKind()) {
+  default: return false;
+  case tok::kw_enum:
+  case tok::kw_enum_class:
+  case tok::kw_enum_struct:
+    return true;
+  }
+}
+
 
 /// ParseDeclarationSpecifiers
 ///       declaration-specifiers: [C99 6.7]
@@ -2740,6 +2770,19 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // typedef-name
     case tok::kw_decltype:
     case tok::identifier: {
+      // In C++/CX this could be the start of a special tag type definition.
+      if (getLangOpts().isCPlusPlusCXorCLI()) {
+        Token Aggregate;
+        if (ParseAggregateClassKeywords(Tok, NextToken(), Aggregate)) {
+          // If we were able to parse an aggregate keyword, then consume the tokens
+          // and inject the new aggregate keyword token in the lexer stream.
+          ConsumeToken();
+          PP.EnterToken(Aggregate);
+          ConsumeToken();
+          continue;
+        }
+      }
+
       // In C++, check to see if this is a scope specifier like foo::bar::, if
       // so handle it as such.  This is important for ctor parsing.
       if (getLangOpts().CPlusPlus) {
@@ -3088,14 +3131,59 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       isInvalid = DS.SetTypeSpecType(TST_unknown_anytype, Loc,
                                      PrevSpec, DiagID, Policy);
       break;
+    case tok::kw_private:
+      if (getLangOpts().OpenCL)
+        goto HandleOpenCLQualifiers;
+      // fallthrough
 
+    case tok::kw_public: {
+      if (!getLangOpts().isCPlusPlusCXorCLI())
+        goto DoneWithDeclSpec;
+
+      // If an aggregate keyword can appear next
+      Token Access = Tok;
+      Token Key = NextToken();
+      
+      Token Aggregate;
+      if (ParseAggregateClassKeywords(Key, GetLookAheadToken(2), Aggregate)) {
+        Key = Aggregate;
+        
+        ConsumeToken();
+        ConsumeToken();
+
+        PP.EnterToken(Aggregate);
+        PP.EnterToken(Access);
+
+        ConsumeToken();
+      } 
+
+      if (isClassKey(Key))
+        goto HandleClassSpecifier;
+      else if (isEnumKey(Key)) {
+        ConsumeToken();
+        goto HandleEnumSpecifier;
+      }
+      else
+        goto DoneWithDeclSpec;
+
+      llvm_unreachable("Aggregate keyword should have been handled");
+    }
+ 
     // class-specifier:
     case tok::kw_class:
     case tok::kw_struct:
+	case tok::kw_union:
     case tok::kw___interface:
-    case tok::kw_union: {
+    case tok::kw_ref_class:
+    case tok::kw_ref_struct:
+    case tok::kw_value_class:
+    case tok::kw_value_struct:
+    case tok::kw_interface_class:
+    case tok::kw_interface_struct: {
       tok::TokenKind Kind = Tok.getKind();
       ConsumeToken();
+
+HandleClassSpecifier:
 
       // These are attributes following class specifiers.
       // To produce better diagnostic, we parse them when
@@ -3115,8 +3203,10 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
     // enum-specifier:
     case tok::kw_enum:
-      ConsumeToken();
-      ParseEnumSpecifier(Loc, DS, TemplateInfo, AS, DSContext);
+      //ConsumeToken();
+      //ParseEnumSpecifier(Loc, DS, TemplateInfo, AS, DSContext);
+HandleEnumSpecifier:
+      ParseEnumSpecifier(tok::unknown, Loc, DS, TemplateInfo, AS, DSContext);
       continue;
 
     // cv-qualifier:
@@ -3177,6 +3267,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw___read_only:
     case tok::kw___write_only:
     case tok::kw___read_write:
+	  HandleOpenCLQualifiers:
       ParseOpenCLQualifiers(DS.getAttributes());
       break;
 
@@ -3454,9 +3545,17 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
 /// [C++] elaborated-type-specifier:
 /// [C++]   'enum' '::'[opt] nested-name-specifier[opt] identifier
 ///
-void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
+void Parser::ParseEnumSpecifier(tok::TokenKind TokenToAssume,
+                                SourceLocation StartLoc, DeclSpec &DS,
                                 const ParsedTemplateInfo &TemplateInfo,
                                 AccessSpecifier AS, DeclSpecContext DSC) {
+
+  if (TokenToAssume != tok::unknown) {
+    // Check for access specifier.
+  } else {
+    ConsumeToken();
+  }
+
   // Parse the tag portion of this.
   if (Tok.is(tok::code_completion)) {
     // Code completion for an enum name.
@@ -3969,6 +4068,14 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
     // enum-specifier
   case tok::kw_enum:
 
+  // C++/CX extensions
+  case tok::kw_ref_class:
+  case tok::kw_ref_struct:
+  case tok::kw_value_class:
+  case tok::kw_value_struct:
+  case tok::kw_interface_class:
+  case tok::kw_interface_struct:
+
     // typedef-name
   case tok::annot_typename:
     return true;
@@ -4040,6 +4147,14 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_union:
     // enum-specifier
   case tok::kw_enum:
+
+  // C++/CX extensions
+  case tok::kw_ref_class:
+  case tok::kw_ref_struct:
+  case tok::kw_value_class:
+  case tok::kw_value_struct:
+  case tok::kw_interface_class:
+  case tok::kw_interface_struct:
 
     // type-qualifier
   case tok::kw_const:
@@ -4180,6 +4295,14 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw___interface:
     // enum-specifier
   case tok::kw_enum:
+
+	  // C++/CX extensions
+  case tok::kw_ref_class:
+  case tok::kw_ref_struct:
+  case tok::kw_value_class:
+  case tok::kw_value_struct:
+  case tok::kw_interface_class:
+  case tok::kw_interface_struct:
 
     // type-qualifier
   case tok::kw_const:
@@ -4481,6 +4604,9 @@ static bool isPtrOperatorToken(tok::TokenKind Kind, const LangOptions &Lang) {
   if (Kind == tok::star || Kind == tok::caret)
     return true;
 
+  if (Lang.isCPlusPlusCXorCLI() && Kind == tok::percent)
+      return true;
+
   // We parse rvalue refs in C++03, because otherwise the errors are scary.
   if (!Lang.CPlusPlus)
     return false;
@@ -4512,6 +4638,8 @@ static bool isPtrOperatorToken(tok::TokenKind Kind, const LangOptions &Lang) {
 /// [C++0x] '&&'
 /// [GNU]   '&' restrict[opt] attributes[opt]
 /// [GNU?]  '&&' restrict[opt] attributes[opt]
+/// [CX]    '^ 'cv-qualifier-seq[opt]
+/// [CX]    '%'
 ///         '::'[opt] nested-name-specifier '*' cv-qualifier-seq[opt]
 void Parser::ParseDeclaratorInternal(Declarator &D,
                                      DirectDeclParseFunction DirectDeclParser) {
@@ -4562,7 +4690,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
   }
 
   tok::TokenKind Kind = Tok.getKind();
-  // Not a pointer, C++ reference, or block.
+  // Not a pointer, C++ reference, handle, or block.
   if (!isPtrOperatorToken(Kind, getLangOpts())) {
     if (DirectDeclParser)
       (this->*DirectDeclParser)(D);
@@ -4571,6 +4699,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
 
   // Otherwise, '*' -> pointer, '^' -> block, '&' -> lvalue reference,
   // '&&' -> rvalue reference
+  // In C++/CLI mode, we have '^' -> handle, '%' -> tracking reference
   SourceLocation Loc = ConsumeToken();  // Eat the *, ^, & or &&.
   D.SetRangeEnd(Loc);
 
@@ -4590,6 +4719,12 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
                                                 DS.getConstSpecLoc(),
                                                 DS.getVolatileSpecLoc(),
                                                 DS.getRestrictSpecLoc()),
+                    DS.getAttributes(),
+                    SourceLocation());
+    else if (getLangOpts().isCPlusPlusCXorCLI())
+      // Remember that we parsed an Handle type, and remember the type-quals.
+      D.AddTypeInfo(DeclaratorChunk::getHandlePointer(DS.getTypeQualifiers(),
+                                                     Loc),
                     DS.getAttributes(),
                     SourceLocation());
     else

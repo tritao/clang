@@ -335,6 +335,18 @@ void StmtPrinter::VisitCXXForRangeStmt(CXXForRangeStmt *Node) {
   if (Policy.IncludeNewlines) OS << "\n";
 }
 
+void StmtPrinter::VisitCLIForEachStmt(CLIForEachStmt *Node) {
+  Indent() << "for each(";
+  PrintingPolicy SubPolicy(Policy);
+  SubPolicy.SuppressInitializers = true;
+  Node->getLoopVariable()->print(OS, SubPolicy, IndentLevel);
+  OS << " in ";
+  //PrintExpr(Node->getRangeInit());
+  OS << ") {\n";
+  PrintStmt(Node->getBody());
+  Indent() << "}\n";
+}
+ 
 void StmtPrinter::VisitMSDependentExistsStmt(MSDependentExistsStmt *Node) {
   Indent();
   if (Node->isIfExists())
@@ -1618,6 +1630,34 @@ void StmtPrinter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
     OS << "[] ";
   PrintExpr(E->getArgument());
 }
+
+void StmtPrinter::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
+  OS << "gcnew ";
+  std::string TypeS;
+  E->getAllocatedType().getAsStringInternal(TypeS, Policy);
+  OS << TypeS;
+
+  CXXNewExpr::InitializationStyle InitStyle = E->getInitializationStyle();
+  if (InitStyle) {
+    if (InitStyle == CXXNewExpr::CallInit)
+      OS << "(";
+    PrintExpr(E->getInitializer());
+    if (InitStyle == CXXNewExpr::CallInit)
+      OS << ")";
+  }
+}
+
+void StmtPrinter::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  if (TypeSourceInfo *TSInfo = E->getTypeSourceInfo())
+    OS << TSInfo->getType().getAsString(Policy) << "()";
+  else
+    OS << E->getType().getAsString(Policy) << "()";
+}
+
+void StmtPrinter::VisitCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  OS << E->getProperty()->getName();
+}
+
 
 void StmtPrinter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   PrintExpr(E->getBase());

@@ -15,6 +15,7 @@
 #include "clang/Serialization/ASTWriter.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/StmtVisitor.h"
@@ -1122,6 +1123,16 @@ void ASTStmtWriter::VisitCXXForRangeStmt(CXXForRangeStmt *S) {
   Code = serialization::STMT_CXX_FOR_RANGE;
 }
 
+void ASTStmtWriter::VisitCLIForEachStmt(CLIForEachStmt *S) {
+  VisitStmt(S);
+  Writer.AddSourceLocation(S->getForLoc(), Record);
+  Writer.AddSourceLocation(S->getEachLoc(), Record);
+  Writer.AddSourceLocation(S->getInLoc(), Record);
+  Writer.AddSourceLocation(S->getRParenLoc(), Record);
+  Writer.AddStmt(S->getBody());
+  Code = serialization::STMT_CLI_FOR_EACH;
+}
+
 void ASTStmtWriter::VisitMSDependentExistsStmt(MSDependentExistsStmt *S) {
   VisitStmt(S);
   Writer.AddSourceLocation(S->getKeywordLoc(), Record);
@@ -1353,6 +1364,30 @@ void ASTStmtWriter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
   
   Code = serialization::EXPR_CXX_DELETE;
 }
+
+void ASTStmtWriter::VisitCLIGCNewExpr(CLIGCNewExpr *E) {
+  VisitExpr(E);
+  Record.push_back(E->StoredInitializationStyle);
+  Writer.AddTypeSourceInfo(E->getAllocatedTypeSourceInfo(), Record);
+  Writer.AddSourceLocation(E->getLocStart(), Record);
+  Writer.AddSourceRange(E->getDirectInitRange(), Record);
+  Code = serialization::EXPR_CLI_GCNEW;
+}
+
+void ASTStmtWriter::VisitCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  VisitExpr(E);
+  Writer.AddTypeSourceInfo(E->getTypeSourceInfo(), Record);
+  Record.push_back(E->getInitKind());
+  Writer.AddStmt(E->getInitExpr());
+  Code = serialization::EXPR_CLI_VALUE_CLASS_INIT;
+}
+
+void ASTStmtWriter::VisitCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  VisitExpr(E);
+  Writer.AddDeclRef(E->getProperty(), Record);
+  Code = serialization::EXPR_CLI_PROPERTY_REF;
+}
+
 
 void ASTStmtWriter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   VisitExpr(E);

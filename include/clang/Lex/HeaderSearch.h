@@ -171,6 +171,9 @@ class HeaderSearch {
   unsigned SystemDirIdx;
   bool NoCurDirSearch;
 
+  /// \#using search path information.
+  std::vector<DirectoryLookup> AssemblySearchDirs;
+
   /// \brief \#include prefixes for which the 'system header' property is
   /// overridden.
   ///
@@ -264,6 +267,10 @@ public:
     SystemDirIdx = systemDirIdx;
     NoCurDirSearch = noCurDirSearch;
     //LookupFileCache.clear();
+  }
+
+  void SetAssemblySearchPaths(const std::vector<DirectoryLookup> &dirs) {
+    AssemblySearchDirs = dirs;
   }
 
   /// \brief Add an additional search path.

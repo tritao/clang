@@ -40,8 +40,10 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/Sema/SemaFixItUtils.h"
 #include "clang/Sema/Template.h"
+#include "TreeTransform.h"
 using namespace clang;
 using namespace sema;
 
@@ -2394,6 +2396,8 @@ Sema::PerformObjectMemberConversion(Expr *From,
     if (FromType->getAs<PointerType>()) {
       FromRecordType = FromType->getPointeeType();
       PointerConversions = true;
+    } if (FromType->getAs<HandleType>()) {
+      FromRecordType = FromType->getPointeeType();
     } else {
       FromRecordType = FromType;
       DestType = DestRecordType;
@@ -3671,6 +3675,115 @@ static bool checkArithmeticOnObjCPointer(Sema &S,
   return true;
 }
 
+static void GatherCommaExpressions(SmallVector<Expr *, 2> &Exprs,
+                                   Expr *Idx) {
+  BinaryOperator *BO = dyn_cast<BinaryOperator>(Idx);
+  
+  if (!BO || BO->getOpcode() != BO_Comma) {
+    Exprs.push_back(Idx);
+    return;
+  }
+
+  GatherCommaExpressions(Exprs, BO->getLHS());
+  GatherCommaExpressions(Exprs, BO->getRHS());
+}
+
+static ExprResult
+CreateCLIIndexedPropertyExpr(Sema &S, SourceLocation LLoc,
+                             SourceLocation RLoc, Expr *Base, Expr *Idx) {
+  ASTContext &Context = S.getASTContext();
+
+  // "In C++/CLI, a top-level comma inside [] is considered a list separator
+  // and not an operator, so X[i,j] would only match an indexed property
+  // taking two arguments.  If one wants a top-level comma operator, one 
+  // must write it inside parentheses, e.g., X[(i,j)].  This is true even
+  // when X does not have class type or handle to class type. end note]"
+
+  // Gather all expressions that are in comma expressions.
+  SmallVector<Expr *, 2> Exprs;
+  GatherCommaExpressions(Exprs, Idx);
+
+  if (const HandleType *HT = Base->getType()->getAs<HandleType>()) {
+    QualType Type = HT->getPointeeType();
+    if (const CLIArrayType *Arr = Type->getAs<CLIArrayType>()) {
+      // 24.3 "CLI array elements are accessed using postfix-expressions of
+      // the form A[I1, I2, …, IN], where A is an expression having a CLI
+      // array type, and each IX is an expression of integral type or a type
+      // that can be implicitly converted to an integral type. Instances of
+      // such expressions are referred to here as CLI array element accesses."
+      bool HasError = false;
+      SmallVector<Expr *, 4> IntExprs;
+    
+      for (unsigned i = 0; i < Exprs.size(); ++i) {
+        Expr *E = Exprs[i];
+        CLIArrayConvertDiagnoser Diagnoser(E);
+        ExprResult I = S.PerformContextualImplicitConversion(E->getLocStart(),
+          E, Diagnoser);
+      
+        if (I.isInvalid()) {
+          HasError = true;
+          continue;
+        }
+
+        IntExprs.push_back(I.get());
+      }
+    
+      if (HasError)
+        return ExprError();
+
+      if (IntExprs.size() != Arr->getRank()) {
+        S.Diag(Idx->getExprLoc(),
+               S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+               "specified too many dimensions to CLI array"));
+        return ExprError();
+      }
+
+      InitListExpr *Init = new (Context) InitListExpr(Context, LLoc, IntExprs,
+        RLoc);
+      Init->setType(Idx->getType());
+
+      return S.CreateBuiltinArraySubscriptExpr(Base, LLoc, Init, RLoc);
+    } else if (const CXXRecordDecl *RD = Type->getAsCXXRecordDecl()) {
+      llvm::SmallVector<CLIPropertyDecl *, 1> Properties;
+      // Search for property indexers on the record.
+      for (DeclContext::decl_iterator I = RD->decls_begin(), E = RD->decls_end();
+           I != E; ++I) {
+        Decl *D = *I;
+        CLIPropertyDecl *PD = dyn_cast<CLIPropertyDecl>(D);
+        if (!PD || !PD->isIndexer())
+          continue;
+        if (Exprs.size() != PD->IndexerTypes.size())
+          continue;
+        Properties.push_back(PD);
+      }
+
+      if (Properties.size() > 1) {
+        S.Diag(Idx->getExprLoc(),
+          S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+          "found multiple valid CLI record indexers"));
+        return ExprError();
+      } else if (Properties.size() == 1) {
+        CLIPropertyDecl *Prop = Properties[0];
+        CLIPropertyRefExpr *PRef = new (Context) CLIPropertyRefExpr(Prop,
+          Base, Exprs, S.Context.PseudoObjectTy, VK_RValue, OK_CLIProperty);
+
+        return PRef;
+      }
+    }
+  }
+
+  InitListExpr *Init = new (Context) InitListExpr(Context, LLoc, Exprs,
+    RLoc);
+  Init->setType(Idx->getType());
+
+  return S.CreateOverloadedArraySubscriptExpr(LLoc, RLoc, Base, Init);
+
+  S.Diag(Idx->getExprLoc(),
+    S.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
+    "error indexing CLI type"));
+  return ExprError();}
+
+
 ExprResult
 Sema::ActOnArraySubscriptExpr(Scope *S, Expr *base, SourceLocation lbLoc,
                               Expr *idx, SourceLocation rbLoc) {
@@ -3704,6 +3817,26 @@ Sema::ActOnArraySubscriptExpr(Scope *S, Expr *base, SourceLocation lbLoc,
                                                   Context.DependentTy,
                                                   VK_LValue, OK_Ordinary,
                                                   rbLoc));
+  }
+
+  // Check for C++/CLI indexed properties.
+  QualType LHSTy = base->getType();
+  QualType RHSTy = idx->getType();
+
+  if (getLangOpts().CPlusPlusCLI &&
+      (LHSTy->isHandleType() || RHSTy->isHandleType())) {
+    const HandleType *LHSHandle = LHSTy->getAs<HandleType>();
+    const HandleType *RHSHandle = RHSTy->getAs<HandleType>();
+    
+    CXXRecordDecl *RD = 0;
+    if (LHSHandle)
+      RD = LHSHandle->getPointeeType()->getAsCXXRecordDecl();
+    else if (RHSHandle)
+      RD = RHSHandle->getPointeeType()->getAsCXXRecordDecl();
+
+    if ((RD && RD->isCLIRecord())) {
+      return CreateCLIIndexedPropertyExpr(*this, lbLoc, rbLoc, base, idx);
+    }
   }
 
   // Use C++ overloaded-operator rules if either operand has record
@@ -3822,6 +3955,12 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
     BaseExpr = RHSExp;
     IndexExpr = LHSExp;
     ResultType = RHSTy->getAs<PointerType>()->getPointeeType();
+  } else if (LHSTy->isHandleType() &&
+             LHSTy->getPointeeType()->getAs<CLIArrayType>()) {
+    const CLIArrayType *ArrTy = LHSTy->getPointeeType()->getAs<CLIArrayType>();
+    BaseExpr = LHSExp;
+    IndexExpr = RHSExp;
+    ResultType = ArrTy->getElementType();
   } else {
     return ExprError(Diag(LLoc, diag::err_typecheck_subscript_value)
        << LHSExp->getSourceRange() << RHSExp->getSourceRange());
@@ -4101,10 +4240,14 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
     Call->setNumArgs(Context, NumParams);
   }
 
+  QualType CLIParamsType;
+  bool hasCLIParams = getLangOpts().CPlusPlusCLI && FDecl &&
+    HasCLIParamArrayAttribute(*this, FDecl, CLIParamsType);
+
   // If too many are passed and not variadic, error on the extras and drop
   // them.
   if (Args.size() > NumParams) {
-    if (!Proto->isVariadic()) {
+    if (!Proto->isVariadic() && !hasCLIParams) {
       MemberExpr *ME = dyn_cast<MemberExpr>(Fn);
       TypoCorrection TC;
       if (FDecl && (TC = TryTypoCorrectionForCall(
@@ -4160,6 +4303,7 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
   for (unsigned i = 0; i < TotalNumArgs; ++i)
     Call->setArg(i, AllArgs[i]);
 
+  Call->setNumArgs(Context, TotalNumArgs);
   return false;
 }
 
@@ -4172,9 +4316,18 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
   unsigned NumParams = Proto->getNumParams();
   unsigned NumArgsToCheck = Args.size();
   bool Invalid = false;
+
+  QualType CLIParamsType;
+  bool hasCLIParams = getLangOpts().CPlusPlusCLI && FDecl &&
+    HasCLIParamArrayAttribute(*this, FDecl, CLIParamsType);
+
   if (Args.size() != NumParams)
     // Use default arguments for missing arguments
     NumArgsToCheck = NumParams;
+
+  if (hasCLIParams && NumArgsToCheck)
+    --NumArgsToCheck;
+
   unsigned ArgIx = 0;
   // Continue to check argument types (even if we have too few/many args).
   for (unsigned i = FirstParam; i != NumArgsToCheck; i++) {
@@ -4247,6 +4400,57 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
 
     AllArgs.push_back(Arg);
   }
+
+  /// C++/CLI 14.6 Parameter array conversions
+  /// "If overload resolution selects one of the synthesized signatures, the
+  /// conversion sequences needed for each argument to satisfy the call is
+  /// performed. For the synthesized parameter array arguments, the compiler
+  /// constructs a CLI array of length n and initializes it with the converted
+  /// values. Then the function call is made with the constructed parameter
+  /// array."
+  if ((ArgIx < Args.size()) && FDecl && hasCLIParams) {
+    ParmVarDecl *Param = FDecl->getParamDecl(FDecl->getNumParams()-1);
+    assert(Param && "Expected a valid parameter decl");
+
+    SmallVector<Expr *, 4> CLIParamsArgs;
+    for (unsigned i = ArgIx; i != Args.size(); ++i) {
+      Expr *Arg = Args[ArgIx++];
+      CLIParamsArgs.push_back(Arg);
+    }
+
+    // We need to get a fake location because else isExplicit() on the list 
+    // will return false and fail an assert later while checking.
+    SourceLocation Loc = getASTContext().getSourceManager().
+      getLocForEndOfFile(getASTContext().getSourceManager().getMainFileID());
+
+    ExprResult InitList = ActOnInitList(Loc, CLIParamsArgs, Loc);
+    if (InitList.isInvalid())
+      return true;
+
+    assert(CLIParamsType->isHandleType());
+    const CLIArrayType *ProtoArrayType = CLIParamsType->getAs<HandleType>()
+      ->getPointeeType()->getAs<CLIArrayType>();
+
+    ExprResult NewArray = BuildCXXCLIGCNew(SourceLocation(),
+                                           QualType(ProtoArrayType, 0),
+                                           Param->getTypeSourceInfo(),
+                                           SourceRange(),
+                                           InitList.take(), 0);
+    if (NewArray.isInvalid())
+      return true;
+
+    InitializedEntity Entity =
+        InitializedEntity::InitializeParameter(Context, CLIParamsType,
+                                               /*Consumed=*/false);
+
+    ExprResult ArgE = PerformCopyInitialization(Entity,
+                                                SourceLocation(),
+                                                Owned(NewArray.take()),
+                                                /*TopLevelOfInitList=*/false,
+                                                AllowExplicit);
+    Invalid |= ArgE.isInvalid();
+    AllArgs.push_back(ArgE.take());
+  } else
 
   // If this is a variadic call, handle args passed through "...".
   if (CallType != VariadicDoesNotApply) {

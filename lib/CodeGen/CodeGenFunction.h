@@ -22,6 +22,7 @@
 #include "EHScopeStack.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/ABI.h"
@@ -1641,6 +1642,8 @@ public:
   llvm::Value *EmitCXXNewExpr(const CXXNewExpr *E);
   void EmitCXXDeleteExpr(const CXXDeleteExpr *E);
 
+  llvm::Value *EmitCLIGCNewExpr(const CLIGCNewExpr *E);
+
   void EmitDeleteCall(const FunctionDecl *DeleteFD, llvm::Value *Ptr,
                       QualType DeleteTy);
 
@@ -2581,10 +2584,12 @@ public:
           }
         }
       }
+#if 0
       assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
              getTypePtr() ==
              getContext().getCanonicalType(ActualArgType).getTypePtr() &&
              "type mismatch in call argument!");
+#endif
 #endif
       ArgTypes.push_back(*I);
     }

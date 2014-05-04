@@ -4796,6 +4796,24 @@ QualType ASTReader::readTypeRecord(unsigned Index) {
     return Context.getBlockPointerType(PointeeType);
   }
 
+ case TYPE_HANDLE: {
+    if (Record.size() != 1) {
+      Error("Incorrect encoding of handle type");
+      return QualType();
+    }
+    QualType PointeeType = readType(*Loc.F, Record, Idx);
+    //return Context.getBlockPointerType(PointeeType);
+  }
+
+  case TYPE_TRACKING_REFERENCE: {
+    if (Record.size() != 1) {
+      Error("Incorrect encoding of tracking reference type");
+      return QualType();
+    }
+    QualType PointeeType = readType(*Loc.F, Record, Idx);
+    //return Context.getLValueReferenceType(PointeeType, Record[1]);
+  }
+
   case TYPE_LVALUE_REFERENCE: {
     if (Record.size() != 2) {
       Error("Incorrect encoding of lvalue reference type");
@@ -5169,6 +5187,13 @@ QualType ASTReader::readTypeRecord(unsigned Index) {
     return T;
   }
 
+  case TYPE_CLI_ARRAY: {
+    unsigned Idx = 0;
+    QualType PointeeType = readType(*Loc.F, Record, Idx);
+    // FIXME:
+    return Context.getCLIArrayType(PointeeType, 0, 0);
+  }
+
   case TYPE_ATOMIC: {
     if (Record.size() != 1) {
       Error("Incorrect encoding of atomic type");
@@ -5241,6 +5266,12 @@ void TypeLocReader::VisitAdjustedTypeLoc(AdjustedTypeLoc TL) {
 }
 void TypeLocReader::VisitBlockPointerTypeLoc(BlockPointerTypeLoc TL) {
   TL.setCaretLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitHandleTypeLoc(HandleTypeLoc TL) {
+  TL.setCaretLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitTrackingReferenceTypeLoc(TrackingReferenceTypeLoc TL) {
+  TL.setPercentLoc(ReadSourceLocation(Record, Idx));
 }
 void TypeLocReader::VisitLValueReferenceTypeLoc(LValueReferenceTypeLoc TL) {
   TL.setAmpLoc(ReadSourceLocation(Record, Idx));
@@ -5417,6 +5448,8 @@ void TypeLocReader::VisitObjCObjectTypeLoc(ObjCObjectTypeLoc TL) {
 }
 void TypeLocReader::VisitObjCObjectPointerTypeLoc(ObjCObjectPointerTypeLoc TL) {
   TL.setStarLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitCLIArrayTypeLoc(CLIArrayTypeLoc TL) {
 }
 void TypeLocReader::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   TL.setKWLoc(ReadSourceLocation(Record, Idx));

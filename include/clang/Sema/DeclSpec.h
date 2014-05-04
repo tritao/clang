@@ -287,6 +287,14 @@ public:
   static const TST TST_atomic = clang::TST_atomic;
   static const TST TST_error = clang::TST_error;
 
+  // C++/CLI extensions.
+  static const TST TST_ref_class = clang::TST_ref_class;
+  static const TST TST_ref_struct = clang::TST_ref_struct;
+  static const TST TST_value_class = clang::TST_value_class;
+  static const TST TST_value_struct = clang::TST_value_struct;
+  static const TST TST_interface_class = clang::TST_interface_class;
+  static const TST TST_interface_struct = clang::TST_interface_struct;
+
   // type-qualifiers
   enum TQ {   // NOTE: These flags must be kept in sync with Qualifiers::TQ.
     TQ_unspecified = 0,
@@ -394,9 +402,23 @@ private:
   void operator=(const DeclSpec &) LLVM_DELETED_FUNCTION;
 public:
   static bool isDeclRep(TST T) {
-    return (T == TST_enum || T == TST_struct ||
-            T == TST_interface || T == TST_union ||
-            T == TST_class);
+    switch(T) {
+    case TST_enum:
+    case TST_struct:
+    case TST_interface:
+    case TST_union:
+    case TST_class:
+    // C++/CX and C++/CLI extensions
+    case TST_ref_class:
+    case TST_ref_struct:
+    case TST_value_class:
+    case TST_value_struct:
+    case TST_interface_class:
+    case TST_interface_struct:
+      return true;
+    default:
+      return false;
+    }
   }
 
   DeclSpec(AttributeFactory &attrFactory)
@@ -1055,7 +1077,8 @@ typedef SmallVector<Token, 4> CachedTokens;
 /// This is intended to be a small value object.
 struct DeclaratorChunk {
   enum {
-    Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren
+    Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
+	Handle, TrackingReference /* C++/CLI */
   } Kind;
 
   /// Loc - The place where this type was defined.
@@ -1096,6 +1119,19 @@ struct DeclaratorChunk {
     }
   };
 
+  struct HandleTypeInfo : TypeInfoCommon {
+    /// For now, sema will catch these as invalid.
+    /// The type qualifiers: const/volatile/restrict.
+    unsigned TypeQuals : 3;
+     void destroy() {
+    }
+  };
+ 
+  struct TrackingReferenceTypeInfo : TypeInfoCommon {
+    void destroy() {
+    }
+  };
+ 
   struct ArrayTypeInfo : TypeInfoCommon {
     /// The type qualifiers for the array: const/volatile/restrict/_Atomic.
     unsigned TypeQuals : 4;
@@ -1350,6 +1386,8 @@ struct DeclaratorChunk {
     TypeInfoCommon        Common;
     PointerTypeInfo       Ptr;
     ReferenceTypeInfo     Ref;
+	HandleTypeInfo        Han;
+	TrackingReferenceTypeInfo TRef;
     ArrayTypeInfo         Arr;
     FunctionTypeInfo      Fun;
     BlockPointerTypeInfo  Cls;
@@ -1362,6 +1400,8 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Pointer:       return Ptr.destroy();
     case DeclaratorChunk::BlockPointer:  return Cls.destroy();
     case DeclaratorChunk::Reference:     return Ref.destroy();
+    case DeclaratorChunk::Handle:        return Han.destroy();
+    case DeclaratorChunk::TrackingReference: return TRef.destroy();
     case DeclaratorChunk::Array:         return Arr.destroy();
     case DeclaratorChunk::MemberPointer: return Mem.destroy();
     case DeclaratorChunk::Paren:         return;
@@ -1459,6 +1499,17 @@ struct DeclaratorChunk {
     return I;
   }
 
+  /// \brief Return a DeclaratorChunk for an handle.
+  static DeclaratorChunk getHandlePointer(unsigned TypeQuals,
+                                         SourceLocation Loc) {
+    DeclaratorChunk I;
+    I.Kind          = Handle;
+    I.Loc           = Loc;
+    I.Han.TypeQuals = TypeQuals;
+    I.Han.AttrList  = 0;
+    return I;
+  }
+
   static DeclaratorChunk getMemberPointer(const CXXScopeSpec &SS,
                                           unsigned TypeQuals,
                                           SourceLocation Loc) {
@@ -1532,7 +1583,8 @@ public:
     TrailingReturnContext, // C++11 trailing-type-specifier.
     TemplateTypeArgContext, // Template type argument.
     AliasDeclContext,    // C++11 alias-declaration.
-    AliasTemplateContext // C++11 alias-declaration template.
+    AliasTemplateContext, // C++11 alias-declaration template.
+	CXXCLIGCNewContext   // C++/CLI GC new declaration
   };
 
 private:
@@ -1701,6 +1753,7 @@ public:
     case ObjCResultContext:
     case TemplateParamContext:
     case CXXNewContext:
+	case CXXCLIGCNewContext:
     case CXXCatchContext:
     case ObjCCatchContext:
     case BlockLiteralContext:
@@ -1733,6 +1786,7 @@ public:
 
     case TypeNameContext:
     case CXXNewContext:
+	case CXXCLIGCNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case ObjCParameterContext:
@@ -1819,6 +1873,7 @@ public:
     case ObjCCatchContext:
     case TypeNameContext:
     case CXXNewContext:
+	case CXXCLIGCNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case BlockLiteralContext:
@@ -1937,7 +1992,9 @@ public:
       case DeclaratorChunk::Paren:
         continue;
       case DeclaratorChunk::Pointer:
+	  case DeclaratorChunk::Handle:
       case DeclaratorChunk::Reference:
+	  case DeclaratorChunk::TrackingReference:
       case DeclaratorChunk::Array:
       case DeclaratorChunk::BlockPointer:
       case DeclaratorChunk::MemberPointer:
@@ -2003,6 +2060,7 @@ public:
     case ObjCResultContext:
     case TemplateParamContext:
     case CXXNewContext:
+	case CXXCLIGCNewContext:
     case CXXCatchContext:
     case ObjCCatchContext:
     case BlockLiteralContext:
@@ -2133,7 +2191,9 @@ public:
     VS_None = 0,
     VS_Override = 1,
     VS_Final = 2,
-    VS_Sealed = 4
+    VS_Abstract = 4,
+    VS_New = 8,
+    VS_Sealed = 16,
   };
 
   VirtSpecifiers() : Specifiers(0) { }
@@ -2160,6 +2220,7 @@ private:
   unsigned Specifiers;
 
   SourceLocation VS_overrideLoc, VS_finalLoc;
+  SourceLocation VS_abstractLoc, VS_newLoc, VS_sealedLoc;
   SourceLocation LastLocation;
 };
 

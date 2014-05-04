@@ -3085,6 +3085,58 @@ public:
 } // end anonymous namespace
 
 namespace {
+// CLR (Common Language Runtime, .NET / Mono) target
+class CLRTargetInfo : public VisualStudioWindowsX86_32TargetInfo {
+protected:
+   void getDefaultFeatures(llvm::StringMap<bool> &Features) const {
+  }
+
+  void getTargetDefines(const LangOptions &Opts,
+                                MacroBuilder &Builder) const {
+    VisualStudioWindowsX86_32TargetInfo::getTargetDefines(Opts,
+      Builder);
+
+    if (Opts.CPlusPlusCLI)
+      Builder.defineMacro("__cplusplus_cli", "200509L");
+  }
+  
+  void getTargetBuiltins(const Builtin::Info *&Records,
+                                 unsigned &NumRecords) const {
+    VisualStudioWindowsX86_32TargetInfo::getTargetBuiltins(Records,
+      NumRecords);
+  }
+
+  BuiltinVaListKind getBuiltinVaListKind() const {
+    return CharPtrBuiltinVaList;
+  }
+
+  const char *getClobbers() const {
+    return NULL;
+  }
+
+  bool validateAsmConstraint(const char *&Name,
+                                 TargetInfo::ConstraintInfo &info) const {
+    return false;
+  }
+
+  void getGCCRegNames(const char * const *&Names,
+                                     unsigned &NumNames) const {
+    Names = NULL;
+    NumNames = 0;
+  }
+
+  void getGCCRegAliases(const GCCRegAlias *&Aliases,
+                                     unsigned &NumAliases) const {
+    Aliases = NULL;
+    NumAliases = 0;
+  }
+
+public:
+  CLRTargetInfo(const llvm::Triple &triple) : VisualStudioWindowsX86_32TargetInfo(triple) {}
+};
+} // end anonymous namespace.
+ 
+namespace {
 // x86-32 Cygwin target
 class CygwinX86_32TargetInfo : public X86_32TargetInfo {
 public:
@@ -5853,6 +5905,9 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
 
   case llvm::Triple::tce:
     return new TCETargetInfo(Triple);
+
+ case llvm::Triple::cil:
+    return new CLRTargetInfo(Triple);
 
   case llvm::Triple::x86:
     if (Triple.isOSDarwin())

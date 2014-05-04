@@ -453,7 +453,11 @@ void PreprocessingRecord::InclusionDirective(
   case tok::pp_import: 
     Kind = InclusionDirective::Import; 
     break;
-    
+
+  case tok::pp_using: 
+    Kind = InclusionDirective::Using;
+    break;   
+
   case tok::pp_include_next: 
     Kind = InclusionDirective::IncludeNext; 
     break;

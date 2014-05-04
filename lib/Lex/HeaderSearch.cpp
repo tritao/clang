@@ -747,6 +747,20 @@ const FileEntry *HeaderSearch::LookupFile(
 
   if (checkMSVCHeaderSearch(Diags, MSFE, 0, IncludeLoc))
     return MSFE;
+  // If this file is an assembly then search for it here.
+  for (i = 0; i != AssemblySearchDirs.size(); ++i) {
+    if (!AssemblySearchDirs[i].getDir())
+      continue;
+    bool InUserSpecifiedSystemFramework = false;
+    const FileEntry *FE =
+      AssemblySearchDirs[i].LookupFile(Filename, *this, SearchPath, RelativePath, SuggestedModule,
+                                       InUserSpecifiedSystemFramework,MappedName);
+    if (!FE) continue;
+
+    // Remember this location for the next lookup we do.
+    CacheLookup.second = i;
+    return FE;
+  }
 
   // Otherwise, didn't find it. Remember we didn't find this.
   CacheLookup.second = SearchDirs.size();

@@ -14,9 +14,11 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/Type.h"
@@ -1113,6 +1115,26 @@ bool CapturedStmt::capturesVariable(const VarDecl *Var) const {
   }
 
   return false;
+}
+
+// C++/CLI statements
+
+CLIForEachStmt::CLIForEachStmt(VarDecl *LoopVar,
+                  Stmt *Collection, Stmt *Body,
+                  SourceLocation FL, SourceLocation EL, SourceLocation IL,
+                  SourceLocation RPL)
+  : Stmt(CLIForEachStmtClass), LoopVar(LoopVar),
+    ForLoc(FL), EachLoc(EL), InLoc(IL), RParenLoc(RPL) {
+  SubExprs[COLLECTION] = Collection;
+  SubExprs[BODY] = Body;
+}
+
+VarDecl *CLIForEachStmt::getLoopVariable() {
+  return LoopVar;
+}
+
+const VarDecl *CLIForEachStmt::getLoopVariable() const {
+  return LoopVar;
 }
 
 StmtRange OMPClause::children() {

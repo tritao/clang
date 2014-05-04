@@ -25,6 +25,7 @@
 #include "clang/Sema/ExternalSemaSource.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Scope.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "llvm/ADT/DenseSet.h"
 

@@ -16,13 +16,16 @@
 
 #include "TypeLocBuilder.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/Lex/Preprocessor.h"
@@ -630,6 +633,12 @@ public:
   /// By default, performs semantic analysis when building the pointer type.
   /// Subclasses may override this routine to provide different behavior.
   QualType RebuildPointerType(QualType PointeeType, SourceLocation Sigil);
+
+  /// \brief Build a new handle type given its pointee type.
+  ///
+  /// By default, performs semantic analysis when building the handle type.
+  /// Subclasses may override this routine to provide different behavior.
+  QualType RebuildHandleType(QualType HandleType, SourceLocation Caret);
 
   /// \brief Build a new block pointer type given its pointee type.
   ///
@@ -1471,6 +1480,26 @@ public:
                                           Sema::BFRK_Rebuild);
   }
 
+  /// \brief Build a new C++/CLI for each statement.
+  ///
+  /// By default, performs semantic analysis to build the new statement.
+  /// Subclasses may override this routine to provide different behavior.
+  StmtResult RebuildCLIForEachStmt(SourceLocation ForLoc,
+                                   SourceLocation EachLoc,
+                                   SourceLocation InLoc,
+                                   Stmt *Range, Stmt *BeginEnd,
+                                   Expr *Cond, Expr *Inc,
+                                   Stmt *LoopVar,
+                                   SourceLocation RParenLoc) {
+#if 0
+    return getSema().BuildCLIForEachStmt(ForLoc, EachLoc, InLoc, Range,
+                                         BeginEnd,
+                                         Cond, Inc, LoopVar, RParenLoc,
+                                         Sema::BFRK_Rebuild);
+#endif
+  }
+
+
   /// \brief Build a new C++0x range-based for statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
@@ -1495,6 +1524,10 @@ public:
   StmtResult RebuildSEHTryStmt(bool IsCXXTry, SourceLocation TryLoc,
                                Stmt *TryBlock, Stmt *Handler) {
     return getSema().ActOnSEHTryBlock(IsCXXTry, TryLoc, TryBlock, Handler);
+  }
+
+  StmtResult RebuildSEHLeaveStmt(SourceLocation LeaveLoc) {
+    return getSema().ActOnSEHLeaveStmt(LeaveLoc);
   }
 
   StmtResult RebuildSEHExceptStmt(SourceLocation Loc, Expr *FilterExpr,
@@ -2148,6 +2181,35 @@ public:
     return getSema().ActOnCXXDelete(StartLoc, IsGlobalDelete, IsArrayForm,
                                     Operand);
   }
+
+  /// \brief Build a new C++/CLI "gcnew" expression.
+  ///
+  /// By default, performs semantic analysis to build the new expression.
+  /// Subclasses may override this routine to provide different behavior.
+  ExprResult RebuildCLIGCNewExpr(SourceLocation StartLoc,
+                               QualType AllocatedType,
+                               TypeSourceInfo *AllocatedTypeInfo,
+                               SourceRange DirectInitRange,
+                               Expr *Initializer) {
+    return getSema().BuildCXXCLIGCNew(StartLoc,
+                                 AllocatedType,
+                                 AllocatedTypeInfo,
+                                 DirectInitRange,
+                                 Initializer,
+                                 0);
+  }
+
+  /// \brief Build a new C++/CLI value class initialization expression.
+  ///
+  /// By default, performs semantic analysis to build the new expression.
+  /// Subclasses may override this routine to provide different behavior.
+  ExprResult RebuildCLIValueClassInitExpr(TypeSourceInfo *TSInfo,
+                                          SourceLocation LParenLoc,
+                                          SourceLocation RParenLoc) {
+    // FIXME:
+    return ExprResult();
+  }
+
 
   /// \brief Build a new type trait expression.
   ///
@@ -3738,6 +3800,57 @@ TreeTransform<Derived>::TransformBlockPointerType(TypeLocBuilder &TLB,
   return Result;
 }
 
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformHandleType(TypeLocBuilder &TLB,
+                                            HandleTypeLoc TL) {
+  QualType PointeeType
+    = getDerived().TransformType(TLB, TL.getPointeeLoc());
+  if (PointeeType.isNull())
+    return QualType();
+  
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      PointeeType != TL.getPointeeLoc().getType()) {
+    Result = getDerived().RebuildHandleType(PointeeType,
+                                            TL.getSigilLoc());
+    if (Result.isNull())
+      return QualType();
+  }
+
+  HandleTypeLoc NewT = TLB.push<HandleTypeLoc>(Result);
+  NewT.setCaretLoc(TL.getCaretLoc());
+  return Result;
+}
+
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformTrackingReferenceType(TypeLocBuilder &TLB,
+                                              TrackingReferenceTypeLoc TL) {
+  const ReferenceType *T = TL.getTypePtr();
+
+  // Note that this works with the pointee-as-written.
+  QualType PointeeType = getDerived().TransformType(TLB, TL.getPointeeLoc());
+  if (PointeeType.isNull())
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      PointeeType != T->getPointeeTypeAsWritten()) {
+    Result = getDerived().RebuildReferenceType(PointeeType,
+                                               T->isSpelledAsLValue(),
+                                               TL.getSigilLoc());
+    if (Result.isNull())
+      return QualType();
+  }
+
+  TrackingReferenceTypeLoc NewTL 
+      = TLB.push<TrackingReferenceTypeLoc>(Result);
+  NewTL.setPercentLoc(TL.getPercentLoc());
+
+  return Result;
+}
+
 /// Transforms a reference type.  Note that somewhat paradoxically we
 /// don't care whether the type itself is an l-value type or an r-value
 /// type;  we only care if the type was *written* as an l-value type
@@ -4770,6 +4883,33 @@ QualType TreeTransform<Derived>::TransformAtomicType(TypeLocBuilder &TLB,
   NewTL.setKWLoc(TL.getKWLoc());
   NewTL.setLParenLoc(TL.getLParenLoc());
   NewTL.setRParenLoc(TL.getRParenLoc());
+
+  return Result;
+}
+
+// C++/CLI extensions
+template<typename Derived>
+QualType TreeTransform<Derived>::TransformCLIArrayType(TypeLocBuilder &TLB,
+                                                       CLIArrayTypeLoc TL) {
+  const RecordType *T = TL.getTypePtr();
+  RecordDecl *Record
+    = cast_or_null<RecordDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                          T->getDecl()));
+  if (!Record)
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      Record != T->getDecl()) {
+#if 0
+    Result = getDerived().RebuildRecordType(Record);
+#endif
+    if (Result.isNull())
+      return QualType();
+  }
+
+  CLIArrayTypeLoc NewTL = TLB.push<CLIArrayTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
 
   return Result;
 }
@@ -6105,6 +6245,12 @@ TreeTransform<Derived>::TransformCXXForRangeStmt(CXXForRangeStmt *S) {
 }
 
 template<typename Derived>
+  StmtResult
+  TreeTransform<Derived>::TransformCLIForEachStmt(CLIForEachStmt *S) {
+  return S;
+}
+
+template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformMSDependentExistsStmt(
                                                     MSDependentExistsStmt *S) {
@@ -6215,6 +6361,11 @@ StmtResult TreeTransform<Derived>::TransformSEHTryStmt(SEHTryStmt *S) {
 
   return getDerived().RebuildSEHTryStmt(S->getIsCXXTry(), S->getTryLoc(),
                                         TryBlock.take(), Handler.take());
+}
+
+template<typename Derived>
+StmtResult TreeTransform<Derived>::TransformSEHLeaveStmt(SEHLeaveStmt *S) {
+  return getDerived().RebuildSEHLeaveStmt(S->getLeaveLoc());
 }
 
 template <typename Derived>
@@ -7720,6 +7871,55 @@ TreeTransform<Derived>::TransformCXXDeleteExpr(CXXDeleteExpr *E) {
                                            E->isArrayForm(),
                                            Operand.get());
 }
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCLIGCNewExpr(CLIGCNewExpr *E) {
+  // Transform the type that we're allocating
+  TypeSourceInfo *AllocTypeInfo
+    = getDerived().TransformType(E->getAllocatedTypeSourceInfo());
+  if (!AllocTypeInfo)
+    return ExprError();
+
+  // Transform the initializer (if any).
+  Expr *OldInit = E->getInitializer();
+  ExprResult NewInit;
+  if (OldInit)
+    NewInit = getDerived().TransformExpr(OldInit);
+  if (NewInit.isInvalid())
+    return ExprError();
+
+  if (!getDerived().AlwaysRebuild() &&
+      AllocTypeInfo == E->getAllocatedTypeSourceInfo() &&
+      NewInit.get() == OldInit) {
+    return SemaRef.Owned(E);
+  }
+
+  QualType AllocType = AllocTypeInfo->getType();
+
+  return getDerived().RebuildCLIGCNewExpr(E->getLocStart(),
+                                        AllocType,
+                                        AllocTypeInfo,
+                                        E->getDirectInitRange(),
+                                        NewInit.take());
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCLIValueClassInitExpr(CLIValueClassInitExpr *E) {
+  TypeSourceInfo *T = getDerived().TransformType(E->getTypeSourceInfo());
+  if (!T)
+    return ExprError();
+
+  if (!getDerived().AlwaysRebuild() &&
+      T == E->getTypeSourceInfo())
+    return SemaRef.Owned(E);
+
+  return getDerived().RebuildCLIValueClassInitExpr(T,
+                                         /*FIXME:*/T->getTypeLoc().getEndLoc(),
+                                                   SourceLocation());
+}
+
 
 template<typename Derived>
 ExprResult
@@ -9231,6 +9431,23 @@ TreeTransform<Derived>::TransformObjCIsaExpr(ObjCIsaExpr *E) {
 }
 
 template<typename Derived>
+ExprResult TreeTransform<Derived>::TransformCLIPropertyRefExpr(CLIPropertyRefExpr *E) {
+  // Transform the base expression.
+  CLIPropertyDecl *Property = cast_or_null<CLIPropertyDecl>(
+    getDerived().TransformDecl(SourceLocation(), E->getProperty()));
+
+  // If nothing changed, just retain the existing expression.
+  if (!getDerived().AlwaysRebuild() && Property == E->getProperty())
+    return SemaRef.Owned(E);
+
+  return SemaRef.Owned(E);
+  //return getDerived().RebuildCLIPropertyRefExpr(Base.get(),
+  //                                               SemaRef.Context.PseudoObjectTy,
+  //                                               E->CLIPropertyDecl(),
+  //                                               E->getLocation());
+}
+
+template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformShuffleVectorExpr(ShuffleVectorExpr *E) {
   bool ArgumentChanged = false;
@@ -9379,6 +9596,13 @@ QualType TreeTransform<Derived>::RebuildPointerType(QualType PointeeType,
                                                     SourceLocation Star) {
   return SemaRef.BuildPointerType(PointeeType, Star,
                                   getDerived().getBaseEntity());
+}
+
+template<typename Derived>
+QualType TreeTransform<Derived>::RebuildHandleType(QualType HandleType,
+                                                   SourceLocation Caret) {
+  return SemaRef.BuildHandleType(HandleType, Caret,
+                                 getDerived().getBaseEntity());
 }
 
 template<typename Derived>

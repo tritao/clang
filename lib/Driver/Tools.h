@@ -582,6 +582,17 @@ namespace dragonfly {
 
   /// Visual studio tools.
 namespace visualstudio {
+  class LLVM_LIBRARY_VISIBILITY ILAsm : public Tool  {
+  public:
+    ILAsm(const ToolChain &TC) : Tool("visualstudio::ILAsm", "assembler", TC) {}
+     virtual bool hasIntegratedCPP() const { return false; }
+     virtual void ConstructJob(Compilation &C, const JobAction &JA,
+                              const InputInfo &Output,
+                              const InputInfoList &Inputs,
+                              const llvm::opt::ArgList &TCArgs,
+                              const char *LinkingOutput) const;
+  };
+ 
   class LLVM_LIBRARY_VISIBILITY Link : public Tool {
   public:
     Link(const ToolChain &TC) : Tool("visualstudio::Link", "linker", TC) {}

@@ -901,6 +901,14 @@ void MicrosoftCXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO,
     break;
   }
 
+  case OO_GC_New: {
+    DiagnosticsEngine &Diags = Context.getDiags();
+    unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+      "cannot mangle the 'gcnew' operator yet");
+    Diags.Report(Loc, DiagID);
+    break;
+  }
+
   case OO_None:
   case NUM_OVERLOADED_OPERATORS:
     llvm_unreachable("Not an overloaded operator");
@@ -1657,6 +1665,12 @@ void MicrosoftCXXNameMangler::mangleType(const TagDecl *TD) {
     case TTK_Enum:
       Out << "W4";
       break;
+   default:
+      DiagnosticsEngine &Diags = Context.getDiags();
+      unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                        "cannot mangle this tag type kind yet");
+      Diags.Report(DiagID);
+      break;
   }
   mangleName(TD);
 }
@@ -1776,6 +1790,25 @@ void MicrosoftCXXNameMangler::mangleType(const PointerType *T,
   QualType PointeeTy = T->getPointeeType();
   mangleType(PointeeTy, Range);
 }
+
+void MicrosoftCXXNameMangler::mangleType(const HandleType *T,
+                                         SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle handles yet");
+  Diags.Report(Range.getBegin(), DiagID)
+    << Range;
+}
+
+void MicrosoftCXXNameMangler::mangleType(const TrackingReferenceType *T,
+                                         SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle tracking references yet");
+  Diags.Report(Range.getBegin(), DiagID)
+    << Range;
+}
+
 void MicrosoftCXXNameMangler::mangleType(const ObjCObjectPointerType *T,
                                          SourceRange Range) {
   // Object pointers never have qualifiers.
@@ -1982,6 +2015,16 @@ void MicrosoftCXXNameMangler::mangleType(const AtomicType *T,
   Diags.Report(Range.getBegin(), DiagID)
     << Range;
 }
+
+// C++/CLI extensions
+void MicrosoftCXXNameMangler::mangleType(const CLIArrayType *T,
+                                         SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                   "cannot mangle C++/CLI types");
+  Diags.Report(Range.getBegin(), DiagID);
+}
+
 
 void MicrosoftMangleContextImpl::mangleCXXName(const NamedDecl *D,
                                                raw_ostream &Out) {

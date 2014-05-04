@@ -859,6 +859,23 @@ def err_omp_unexpected_clause : Error <
   "unexpected OpenMP clause '%0' in directive '#pragma omp %1'">;
 def err_omp_more_one_clause : Error <
   "directive '#pragma omp %0' cannot contain more than one '%1' clause">;
+
+// C++/CLI Language Diagnostics.
+def err_cli_expected_kw_in_for_each : Error<
+  "expected 'in' keyword in 'for each' statement specifier">;
+
+def ext_cli_member_keyword : ExtWarn<
+  "'%0' keyword is a C++/CLI extension">/*, InGroup<CXXCLI>*/;
+
+def err_cli_invalid_access_specifiers : Error<
+ "invalid access specifier combination of '%0' and '%1'">;
+
+def err_cx_invalid_class_access_specifier : Error<
+ "invalid access specifier '%0'">;
+
+def err_cx_invalid_nested_class_access_specifier : Error<
+ "access specifiers not allowed in nested classes / structs">;
+
 } // end of Parse Issue category.
 
 let CategoryName = "Modules Issue" in {

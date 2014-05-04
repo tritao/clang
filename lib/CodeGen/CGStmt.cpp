@@ -41,6 +41,8 @@ void CodeGenFunction::EmitStopPoint(const Stmt *S) {
   }
 }
 
+static void EmitCLIForEachStmt(const CLIForEachStmt &S);
+
 void CodeGenFunction::EmitStmt(const Stmt *S) {
   assert(S && "Null statement?");
   PGO.setCurrentStmt(S);
@@ -164,7 +166,9 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::ObjCAutoreleasePoolStmtClass:
     EmitObjCAutoreleasePoolStmt(cast<ObjCAutoreleasePoolStmt>(*S));
     break;
-
+  case Stmt::CLIForEachStmtClass:
+    EmitCLIForEachStmt(cast<CLIForEachStmt>(*S));
+    break;
   case Stmt::CXXTryStmtClass:
     EmitCXXTryStmt(cast<CXXTryStmt>(*S));
     break;
@@ -725,6 +729,10 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S) {
 
   // Emit the fall-through block.
   EmitBlock(LoopExit.getBlock(), true);
+}
+
+static void EmitCLIForEachStmt(const CLIForEachStmt &S) {
+  // FIXME: Not implemented yet.
 }
 
 void CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S) {

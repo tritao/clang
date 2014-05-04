@@ -20,6 +20,7 @@
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/CommentDiagnostic.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/EvaluatedExprVisitor.h"
@@ -361,6 +362,15 @@ DeclSpec::TST Sema::isTagName(IdentifierInfo &II, Scope *S) {
       case TTK_Union:  return DeclSpec::TST_union;
       case TTK_Class:  return DeclSpec::TST_class;
       case TTK_Enum:   return DeclSpec::TST_enum;
+
+      /// C++/CLI extensions.
+      case TTK_RefClass:        return DeclSpec::TST_ref_class;
+      case TTK_RefStruct:       return DeclSpec::TST_ref_struct;
+      case TTK_ValueClass:      return DeclSpec::TST_value_class;
+      case TTK_ValueStruct:     return DeclSpec::TST_value_struct;
+      case TTK_InterfaceClass:  return DeclSpec::TST_interface_class;
+      case TTK_InterfaceStruct: return DeclSpec::TST_interface_struct;
+
       }
     }
 
@@ -540,6 +550,36 @@ static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
       case TTK_Union:
         TagName = "union";
         FixItTagName = "union ";
+        break;
+
+      case TTK_RefClass:
+        TagName = "ref class";
+        FixItTagName = "ref class ";
+        break;
+
+      case TTK_RefStruct:
+        TagName = "ref struct";
+        FixItTagName = "ref struct ";
+        break;
+
+      case TTK_ValueClass:
+        TagName = "value class";
+        FixItTagName = "value class ";
+        break;
+
+      case TTK_ValueStruct:
+        TagName = "value struct";
+        FixItTagName = "value struct ";
+        break;
+
+      case TTK_InterfaceClass:
+        TagName = "interface class";
+        FixItTagName = "interface class ";
+        break;
+
+      case TTK_InterfaceStruct:
+        TagName = "interface struct";
+        FixItTagName = "interface struct ";
         break;
     }
 
@@ -10358,6 +10398,36 @@ bool Sema::isAcceptableTagRedeclaration(const TagDecl *Previous,
   return false;
 }
 
+/// Returns if the token is the start of a CLI tag type kind.
+static bool isCLITagTypeKind(TagTypeKind Kind) {
+  switch(Kind) {
+  default: return false;
+  case TTK_RefClass:
+  case TTK_RefStruct:
+  case TTK_ValueClass:
+  case TTK_ValueStruct:
+  case TTK_InterfaceClass:
+  case TTK_InterfaceStruct:
+    return true;
+  }
+}
+
+/// Returns if the token is the start of a CLI tag type kind.
+static CLIRecordType convertTagKindToCLIRecordType(TagTypeKind Kind) {
+  switch(Kind) {
+  default: llvm_unreachable("Unknown CLI tag type kind");
+  case TTK_RefClass:
+  case TTK_RefStruct:
+    return CLI_RT_ReferenceType;
+  case TTK_ValueClass:
+  case TTK_ValueStruct:
+    return CLI_RT_ValueType;
+  case TTK_InterfaceClass:
+  case TTK_InterfaceStruct:
+    return CLI_RT_InterfaceType;
+  }
+}
+
 /// ActOnTag - This is invoked when we see 'struct foo' or 'struct {'.  In the
 /// former case, Name will be non-null.  In the later case, Name will be null.
 /// TagSpec indicates what kind of tag this is. TUK indicates whether this is a
@@ -11036,6 +11106,14 @@ CreateNewDecl:
     }
   }
 
+  if (CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(New)) {
+    if (isCLITagTypeKind(Kind)) {
+      CLIDefinitionData *Data = new (Context) CLIDefinitionData();
+      Data->Type = convertTagKindToCLIRecordType(Kind);
+      RD->setCLIData(Data);
+    }
+  }
+  
   if (ModulePrivateLoc.isValid()) {
     if (isExplicitSpecialization)
       Diag(New->getLocation(), diag::err_module_private_specialization)

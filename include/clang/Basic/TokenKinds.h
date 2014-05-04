@@ -31,6 +31,7 @@ enum TokenKind LLVM_ENUM_INT_TYPE(unsigned short) {
 /// \brief Provides a namespace for preprocessor keywords which start with a
 /// '#' at the beginning of the line.
 enum PPKeywordKind {
+	pp_not_keyword,
 #define PPKEYWORD(X) pp_##X,
 #include "clang/Basic/TokenKinds.def"
   NUM_PP_KEYWORDS
@@ -39,10 +40,27 @@ enum PPKeywordKind {
 /// \brief Provides a namespace for Objective-C keywords which start with
 /// an '@'.
 enum ObjCKeywordKind {
+	objc_not_keyword,
 #define OBJC1_AT_KEYWORD(X) objc_##X,
 #define OBJC2_AT_KEYWORD(X) objc_##X,
 #include "clang/Basic/TokenKinds.def"
   NUM_OBJC_KEYWORDS
+};
+
+// \brief Provides a namespace for Objective-C context keywords.
+enum ObjCContextKeywordKind {
+  objc_ctx_not_keyword,
+#define OBJC_CONTEXT_KEYWORD(X) objc_ctx_##X,
+#include "clang/Basic/TokenKinds.def"
+  NUM_OBJC_CONTEXT_KEYWORDS
+};
+
+/// \brief Provides a namespace for C++/CX and C++/CLI context keywords.
+enum CXXCXContextKeywordKind {
+  cxx_cx_ctx_not_keyword,
+#define CXX_CX_CONTEXT_KEYWORD(X) cxx_cx_ctx_##X,
+#include "clang/Basic/TokenKinds.def"
+  NUM_CXX_CX_CONTEXT_KEYWORDS
 };
 
 /// \brief Defines the possible values of an on-off-switch (C99 6.10.6p2).

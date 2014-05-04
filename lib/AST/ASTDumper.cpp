@@ -1576,6 +1576,9 @@ void ASTDumper::VisitExpr(const Expr *Node) {
     case OK_VectorComponent:
       OS << " vectorcomponent";
       break;
+    case OK_CLIProperty:
+      OS << " cliproperty";
+      break;
     }
   }
 }

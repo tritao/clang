@@ -428,9 +428,15 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                   cast<BlockPointerType>(T2)->getPointeeType()))
       return false;
     break;
-
+  case Type::Handle:
+    if (!IsStructurallyEquivalent(Context,
+                                  cast<HandleType>(T1)->getPointeeType(),
+                                  cast<HandleType>(T2)->getPointeeType()))
+      return false;
+    break;
   case Type::LValueReference:
-  case Type::RValueReference: {
+  case Type::RValueReference:
+  case Type::TrackingReference: {
     const ReferenceType *Ref1 = cast<ReferenceType>(T1);
     const ReferenceType *Ref2 = cast<ReferenceType>(T2);
     if (Ref1->isSpelledAsLValue() != Ref2->isSpelledAsLValue())
@@ -825,6 +831,19 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     break;
   }
 
+  // C++/CLI extensions
+  case Type::CLIArray: {
+    const CLIArrayType *Arr1 = cast<CLIArrayType>(T1);
+    const CLIArrayType *Arr2 = cast<CLIArrayType>(T2);
+    if (!IsStructurallyEquivalent(Context,
+                                  Arr1->getElementType(),
+                                  Arr2->getElementType()))
+      return false;
+    if (Arr1->getRank() != Arr2->getRank())
+      return false;
+    break;
+  }
+ 
   case Type::Atomic: {
     if (!IsStructurallyEquivalent(Context,
                                   cast<AtomicType>(T1)->getValueType(),

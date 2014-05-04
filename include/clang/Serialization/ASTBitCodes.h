@@ -838,6 +838,12 @@ namespace clang {
       TYPE_AUTO                  = 38,
       /// \brief A UnaryTransformType record.
       TYPE_UNARY_TRANSFORM       = 39,
+      /// \brief An HandleType record.
+      TYPE_HANDLE                = 45,
+      /// \brief An TrackingReferenceType record.
+      TYPE_TRACKING_REFERENCE    = 46,
+      /// \brief An CLIArrayType record.
+      TYPE_CLI_ARRAY             = 47,
       /// \brief An AtomicType record.
       TYPE_ATOMIC                = 40,
       /// \brief A DecayedType record.
@@ -1317,6 +1323,13 @@ namespace clang {
       EXPR_FUNCTION_PARM_PACK,    // FunctionParmPackExpr
       EXPR_MATERIALIZE_TEMPORARY, // MaterializeTemporaryExpr
       
+      // C++/CLI
+      EXPR_CLI_VALUE_CLASS_INIT,  // CLIValueClassInitExpr
+      EXPR_CLI_PROPERTY_REF,      // CLIPropertyRefExpr
+      EXPR_CLI_GCNEW,             // CLIGCNewExpr
+
+      STMT_CLI_FOR_EACH,          // CLIForEachStmt
+
       // CUDA
       EXPR_CUDA_KERNEL_CALL,       // CUDAKernelCallExpr      
 

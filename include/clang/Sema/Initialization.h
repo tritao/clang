@@ -59,6 +59,8 @@ public:
     /// \brief The entity being initialized is an object (or array of
     /// objects) allocated via new.
     EK_New,
+	/// \brief The entity being initialized is an object allocated via gcnew.
+    EK_GCNew,
     /// \brief The entity being initialized is a temporary object.
     EK_Temporary,
     /// \brief The entity being initialized is a base member subobject.
@@ -250,6 +252,11 @@ public:
     return InitializedEntity(EK_Exception, ThrowLoc, Type, NRVO);
   }
 
+  /// \brief Create the initialization entity for an object allocated via gcnew.
+  static InitializedEntity InitializeGCNew(SourceLocation NewLoc, QualType Type) {
+    return InitializedEntity(EK_GCNew, NewLoc, Type);
+  }
+ 
   /// \brief Create the initialization entity for an object allocated via new.
   static InitializedEntity InitializeNew(SourceLocation NewLoc, QualType Type) {
     return InitializedEntity(EK_New, NewLoc, Type);
@@ -673,6 +680,12 @@ public:
     /// \brief An initialization that "converts" an Objective-C object
     /// (not a point to an object) to another Objective-C object type.
     SK_ObjCObjectConversion,
+    /// \brief A zero-initialization of a C++/CLI value type.
+    SK_CLIValueTypeZeroInit,
+    /// \brief A copy-initialization of a C++/CLI value type.
+    SK_CLIValueTypeCopyInit,
+    /// \brief An initialization of a C++/CLI array type.
+    SK_CLIArrayInit,
     /// \brief Array initialization (from an array rvalue).
     /// This is a GNU C extension.
     SK_ArrayInit,
@@ -728,6 +741,9 @@ public:
       /// \brief When Kind = SK_RewrapInitList, the syntactic form of the
       /// wrapping list.
       InitListExpr *WrappingSyntacticList;
+
+      /// \brief When Kind = SK_CLIValueTypeCopyInit, the copy value expression.
+      Expr *InitExpr;
     };
 
     void Destroy();
@@ -1021,6 +1037,15 @@ public:
   /// \brief Add an Objective-C object conversion step, which is
   /// always a no-op.
   void AddObjCObjectConversionStep(QualType T);
+
+  /// \brief Add an C++/CLI value type zero-initialization step.
+  void AddCLIValueZeroInitializationStep(QualType T);
+
+  /// \brief Add an C++/CLI value type copy-initialization step.
+  void AddCLIValueCopyInitializationStep(QualType T, Expr *E);
+
+  /// \brief Add an C++/CLI array type initialization step.
+  void AddCLIArrayInitializationStep(QualType T);
 
   /// \brief Add an array initialization step.
   void AddArrayInitStep(QualType T);

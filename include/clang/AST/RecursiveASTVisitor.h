@@ -17,16 +17,19 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclOpenMP.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/TemplateBase.h"
@@ -894,6 +897,15 @@ DEF_TRAVERSE_TYPE(BlockPointerType, {
     TRY_TO(TraverseType(T->getPointeeType()));
   })
 
+DEF_TRAVERSE_TYPE(HandleType, {
+     TRY_TO(TraverseType(T->getPointeeType()));
+  })
+ 
+ DEF_TRAVERSE_TYPE(TrackingReferenceType, {
+     TRY_TO(TraverseType(T->getPointeeType()));
+  })
+
+
 DEF_TRAVERSE_TYPE(LValueReferenceType, {
     TRY_TO(TraverseType(T->getPointeeType()));
   })
@@ -1045,6 +1057,10 @@ DEF_TRAVERSE_TYPE(ObjCObjectPointerType, {
     TRY_TO(TraverseType(T->getPointeeType()));
   })
 
+DEF_TRAVERSE_TYPE(CLIArrayType, {
+    TRY_TO(TraverseType(T->getElementType()));
+  })
+
 DEF_TRAVERSE_TYPE(AtomicType, {
     TRY_TO(TraverseType(T->getValueType()));
   })
@@ -1104,6 +1120,14 @@ DEF_TRAVERSE_TYPELOC(BlockPointerType, {
     TRY_TO(TraverseTypeLoc(TL.getPointeeLoc()));
   })
 
+DEF_TRAVERSE_TYPELOC(HandleType, {
+    TRY_TO(TraverseTypeLoc(TL.getPointeeLoc()));
+  })
+ 
+DEF_TRAVERSE_TYPELOC(TrackingReferenceType, {
+    TRY_TO(TraverseTypeLoc(TL.getPointeeLoc()));
+  })
+ 
 DEF_TRAVERSE_TYPELOC(LValueReferenceType, {
     TRY_TO(TraverseTypeLoc(TL.getPointeeLoc()));
   })
@@ -1289,6 +1313,8 @@ DEF_TRAVERSE_TYPELOC(AtomicType, {
     TRY_TO(TraverseTypeLoc(TL.getValueLoc()));
   })
 
+DEF_TRAVERSE_TYPELOC(CLIArrayType, { })
+
 #undef DEF_TRAVERSE_TYPELOC
 
 // ----------------- Decl traversal -----------------
@@ -1463,6 +1489,14 @@ DEF_TRAVERSE_DECL(ObjCMethodDecl, {
 })
 
 DEF_TRAVERSE_DECL(ObjCPropertyDecl, {
+    // FIXME: implement
+  })
+
+DEF_TRAVERSE_DECL(CLIPropertyDecl, {
+    // FIXME: implement
+  })
+
+DEF_TRAVERSE_DECL(CLIEventDecl, {
     // FIXME: implement
   })
 
@@ -2008,6 +2042,7 @@ DEF_TRAVERSE_STMT(CXXForRangeStmt, {
     return true;
   }
 })
+DEF_TRAVERSE_STMT(CLIForEachStmt, { })
 DEF_TRAVERSE_STMT(MSDependentExistsStmt, {
     TRY_TO(TraverseNestedNameSpecifierLoc(S->getQualifierLoc()));
     TRY_TO(TraverseDeclarationNameInfo(S->getNameInfo()));
@@ -2138,6 +2173,16 @@ DEF_TRAVERSE_STMT(CXXScalarValueInitExpr, {
 DEF_TRAVERSE_STMT(CXXNewExpr, {
   // The child-iterator will pick up the other arguments.
   TRY_TO(TraverseTypeLoc(S->getAllocatedTypeSourceInfo()->getTypeLoc()));
+  })
+
+DEF_TRAVERSE_STMT(CLIGCNewExpr, {
+  // The child-iterator will pick up the other arguments.
+  TRY_TO(TraverseTypeLoc(S->getAllocatedTypeSourceInfo()->getTypeLoc()));
+  })
+
+DEF_TRAVERSE_STMT(CLIValueClassInitExpr, {
+  // The child-iterator will pick up the other arguments.
+  TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
   })
 
 DEF_TRAVERSE_STMT(OffsetOfExpr, {
@@ -2314,7 +2359,10 @@ DEF_TRAVERSE_STMT(UnresolvedMemberExpr, {
   }
 })
 
+DEF_TRAVERSE_STMT(CLIPropertyRefExpr, { })
+
 DEF_TRAVERSE_STMT(SEHTryStmt, {})
+DEF_TRAVERSE_STMT(SEHLeaveStmt, {})
 DEF_TRAVERSE_STMT(SEHExceptStmt, {})
 DEF_TRAVERSE_STMT(SEHFinallyStmt,{})
 DEF_TRAVERSE_STMT(CapturedStmt, {

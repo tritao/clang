@@ -916,7 +916,9 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
       // Emit a lifetime intrinsic if meaningful.  There's no point
       // in doing this if we don't have a valid insertion point (?).
-      uint64_t size = CGM.getDataLayout().getTypeAllocSize(LTy);
+      uint64_t size = 0;
+      if (LTy->isSized())
+        size = CGM.getDataLayout().getTypeAllocSize(LTy);
       if (HaveInsertPoint() && shouldUseLifetimeMarkers(*this, D, size)) {
         llvm::Value *sizeV = llvm::ConstantInt::get(Int64Ty, size);
 

@@ -42,9 +42,16 @@ const CXXRecordDecl *Expr::getBestDynamicClassType() const {
   QualType DerivedType = E->getType();
   if (const PointerType *PTy = DerivedType->getAs<PointerType>())
     DerivedType = PTy->getPointeeType();
+  else if (const HandleType *HTy = DerivedType->getAs<HandleType>())
+    DerivedType = HTy->getPointeeType();
 
   if (DerivedType->isDependentType())
     return NULL;
+
+ if (const CLIArrayType *ArrTy = DerivedType->getAs<CLIArrayType>()) {
+    Decl *D = ArrTy->getDecl();
+    return cast<CXXRecordDecl>(D);
+  }
 
   const RecordType *Ty = DerivedType->castAs<RecordType>();
   Decl *D = Ty->getDecl();
@@ -1502,6 +1509,13 @@ bool CastExpr::CastConsistency() const {
   CheckNoBasePath:
     assert(path_empty() && "Cast kind should not have a base path!");
     break;
+
+  case CK_CLI_StringToHandle:
+  case CK_CLI_NullToHandle:
+  case CK_CLI_DerivedToBaseHandle:
+  case CK_CLI_BoxValueToHandle:
+  case CK_CLI_UnboxHandleToValue:
+    break;
   }
   return true;
 }
@@ -1616,6 +1630,16 @@ const char *CastExpr::getCastKindName() const {
     return "BuiltinFnToFnPtr";
   case CK_ZeroToOCLEvent:
     return "ZeroToOCLEvent";
+  case CK_CLI_StringToHandle:
+    return "CLI_StringToHandle";
+  case CK_CLI_NullToHandle:
+    return "CLI_NullToHandle";
+  case CK_CLI_DerivedToBaseHandle:
+    return "CLI_DerivedToBaseHandle";
+  case CK_CLI_BoxValueToHandle:
+    return "CLI_BoxValueToHandle";
+  case CK_CLI_UnboxHandleToValue:
+    return "CLI_UnboxHandleToValue";
   case CK_AddressSpaceConversion:
     return "AddressSpaceConversion";
   }
@@ -2816,6 +2840,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case ObjCBoolLiteralExprClass:
   case CXXUuidofExprClass:
   case OpaqueValueExprClass:
+  case CLIValueClassInitExprClass:
     // These never have a side-effect.
     return false;
 
@@ -2835,6 +2860,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case CXXBindTemporaryExprClass:
   case BlockExprClass:
   case CUDAKernelCallExprClass:
+  case CLIGCNewExprClass:
     // These always have a side-effect.
     return true;
 
@@ -2963,6 +2989,9 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case ObjCIndirectCopyRestoreExprClass:
   case ObjCSubscriptRefExprClass:
   case ObjCBridgedCastExprClass:
+    // FIXME: Classify these cases better.
+    return true;
+  case CLIPropertyRefExprClass:
     // FIXME: Classify these cases better.
     return true;
   }

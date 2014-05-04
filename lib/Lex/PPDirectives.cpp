@@ -755,6 +755,11 @@ void Preprocessor::HandleDirective(Token &Result) {
       // Handle -imacros.
       return HandleIncludeMacrosDirective(SavedHash.getLocation(), Result); 
 
+	// C++/CLI 10.3 - Importing types from assemblies.
+    case tok::pp_using:
+      return HandleUsingDirective(SavedHash.getLocation(), Result);
+      break;
+
     // C99 6.10.3 - Macro Replacement.
     case tok::pp_define:
       return HandleDefineDirective(Result, ImmediatelyAfterTopLevelIfndef);
@@ -1722,6 +1727,79 @@ void Preprocessor::HandleImportDirective(SourceLocation HashLoc,
   }
   return HandleIncludeDirective(HashLoc, ImportTok, 0, true);
 }
+
+/// HandleUsingDirective - Implements \#using.
+///
+void Preprocessor::HandleUsingDirective(SourceLocation HashLoc,
+                                        Token &UsingTok) {
+  if (!LangOpts.CPlusPlusCLI) {
+    Diag(UsingTok, diag::ext_pp_using_directive);
+  }
+
+  Token FilenameTok;
+  CurPPLexer->LexIncludeFilename(FilenameTok);
+
+  // Reserve a buffer to get the spelling.
+  SmallString<128> FilenameBuffer;
+  StringRef Filename;
+  SourceLocation End;
+  SourceLocation CharEnd; // the end of this directive, in characters
+  
+  switch (FilenameTok.getKind()) {
+  case tok::eod:
+    // If the token kind is EOD, the error has already been diagnosed.
+    return;
+
+  case tok::angle_string_literal:
+  case tok::string_literal:
+    Filename = getSpelling(FilenameTok, FilenameBuffer);
+    End = FilenameTok.getLocation();
+    // For an angled include, point the end location at the closing '>'.
+    if (FilenameTok.is(tok::angle_string_literal))
+      End = End.getLocWithOffset(Filename.size()-1);
+    CharEnd = End.getLocWithOffset(Filename.size());
+    break;
+
+  case tok::less:
+    // This could be a <foo/bar.h> file coming from a macro expansion.  In this
+    // case, glue the tokens together into FilenameBuffer and interpret those.
+    FilenameBuffer.push_back('<');
+    if (ConcatenateIncludeName(FilenameBuffer, End))
+      return;   // Found <eod> but no ">"?  Diagnostic already emitted.
+    Filename = FilenameBuffer.str();
+    CharEnd = getLocForEndOfToken(End);
+    break;
+  default:
+    Diag(FilenameTok.getLocation(), diag::err_pp_expects_filename);
+    DiscardUntilEndOfDirective();
+    return;
+  }
+
+  CharSourceRange FilenameRange
+    = CharSourceRange::getCharRange(FilenameTok.getLocation(), CharEnd);
+  StringRef OriginalFilename = Filename;
+  bool isAngled =
+    GetIncludeFilenameSpelling(FilenameTok.getLocation(), Filename);
+  // If GetIncludeFilenameSpelling set the start ptr to null, there was an
+  // error.
+  if (Filename.empty()) {
+    DiscardUntilEndOfDirective();
+    return;
+  }
+
+  // Verify that there is nothing after the filename, other than EOD.  Note that
+  // we allow macros that expand to nothing after the filename, because this
+  // falls into the category of "#include pp-tokens new-line" specified in
+  // C99 6.10.2p4.
+  CheckEndOfDirective(UsingTok.getIdentifierInfo()->getNameStart(), true);
+
+  if (Callbacks) {
+    // Notify the callback object that we've seen an using directive.
+    Callbacks->UsingDirective(HashLoc, UsingTok, Filename, isAngled,
+                              FilenameRange);
+  }
+}
+
 
 /// HandleIncludeMacrosDirective - The -imacros command line option turns into a
 /// pseudo directive in the predefines buffer.  This handles it by sucking all

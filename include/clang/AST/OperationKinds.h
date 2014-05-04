@@ -298,7 +298,22 @@ enum CastKind {
   CK_ZeroToOCLEvent,
 
   // Convert a pointer to a different address space.
-  CK_AddressSpaceConversion
+  CK_AddressSpaceConversion,
+
+  // Convert from a string literal to a C++/CLI string handle.
+  CK_CLI_StringToHandle,
+
+  // Convert from a null pointer to an handle.
+  CK_CLI_NullToHandle,
+
+  // Convert from a derived to a base handle.
+  CK_CLI_DerivedToBaseHandle,
+
+  // Convert from a value type to a boxed handle.
+  CK_CLI_BoxValueToHandle,
+
+  // Convert from a boxed handle to a value type.
+  CK_CLI_UnboxHandleToValue
 };
 
 static const CastKind CK_Invalid = static_cast<CastKind>(-1);

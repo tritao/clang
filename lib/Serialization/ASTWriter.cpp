@@ -124,6 +124,16 @@ void ASTTypeWriter::VisitBlockPointerType(const BlockPointerType *T) {
   Code = TYPE_BLOCK_POINTER;
 }
 
+void ASTTypeWriter::VisitHandleType(const HandleType *T) {
+  Writer.AddTypeRef(T->getPointeeType(), Record);
+  Code = TYPE_HANDLE;
+}
+
+void ASTTypeWriter::VisitTrackingReferenceType(const TrackingReferenceType *T) {
+  Writer.AddTypeRef(T->getPointeeType(), Record);
+  Code = TYPE_TRACKING_REFERENCE;
+}
+
 void ASTTypeWriter::VisitLValueReferenceType(const LValueReferenceType *T) {
   Writer.AddTypeRef(T->getPointeeTypeAsWritten(), Record);
   Record.push_back(T->isSpelledAsLValue());
@@ -414,6 +424,12 @@ ASTTypeWriter::VisitObjCObjectPointerType(const ObjCObjectPointerType *T) {
 }
 
 void
+ASTTypeWriter::VisitCLIArrayType(const CLIArrayType *T) {
+  Writer.AddTypeRef(T->getPointeeType(), Record);
+  Code = TYPE_CLI_ARRAY;
+}
+
+void
 ASTTypeWriter::VisitAtomicType(const AtomicType *T) {
   Writer.AddTypeRef(T->getValueType(), Record);
   Code = TYPE_ATOMIC;
@@ -466,6 +482,12 @@ void TypeLocWriter::VisitAdjustedTypeLoc(AdjustedTypeLoc TL) {
 }
 void TypeLocWriter::VisitBlockPointerTypeLoc(BlockPointerTypeLoc TL) {
   Writer.AddSourceLocation(TL.getCaretLoc(), Record);
+}
+void TypeLocWriter::VisitHandleTypeLoc(HandleTypeLoc TL) {
+  Writer.AddSourceLocation(TL.getCaretLoc(), Record);
+}
+void TypeLocWriter::VisitTrackingReferenceTypeLoc(TrackingReferenceTypeLoc TL) {
+  Writer.AddSourceLocation(TL.getPercentLoc(), Record);
 }
 void TypeLocWriter::VisitLValueReferenceTypeLoc(LValueReferenceTypeLoc TL) {
   Writer.AddSourceLocation(TL.getAmpLoc(), Record);
@@ -635,6 +657,8 @@ void TypeLocWriter::VisitObjCObjectTypeLoc(ObjCObjectTypeLoc TL) {
 }
 void TypeLocWriter::VisitObjCObjectPointerTypeLoc(ObjCObjectPointerTypeLoc TL) {
   Writer.AddSourceLocation(TL.getStarLoc(), Record);
+}
+void TypeLocWriter::VisitCLIArrayTypeLoc(CLIArrayTypeLoc TL) {
 }
 void TypeLocWriter::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   Writer.AddSourceLocation(TL.getKWLoc(), Record);

@@ -409,6 +409,8 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
     // Don't walk through these.
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       goto error;
     }
   }
@@ -441,6 +443,8 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::MemberPointer:
     case DeclaratorChunk::Paren:
     case DeclaratorChunk::Array:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       continue;
 
     case DeclaratorChunk::Function:
@@ -502,6 +506,8 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::Array:
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       continue;
     }
   }
@@ -884,6 +890,13 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   case DeclSpec::TST_enum:
   case DeclSpec::TST_union:
   case DeclSpec::TST_struct:
+  // C++/CLI extensions
+  case DeclSpec::TST_ref_class:
+  case DeclSpec::TST_ref_struct:
+  case DeclSpec::TST_value_class:
+  case DeclSpec::TST_value_struct:
+  case DeclSpec::TST_interface_class:
+  case DeclSpec::TST_interface_struct:
   case DeclSpec::TST_interface: {
     TypeDecl *D = dyn_cast_or_null<TypeDecl>(DS.getRepAsDecl());
     if (!D) {
@@ -1343,6 +1356,51 @@ QualType Sema::BuildPointerType(QualType T,
   // Build the pointer type.
   return Context.getPointerType(T);
 }
+
+/// \brief Build an handle type.
+///
+/// \param T The type to which we'll be building an handle.
+///
+/// \param Loc The location of the entity whose type involves this
+/// handle type or, if there is no such entity, the location of the
+/// type that will have handle type.
+///
+/// \param Entity The name of the entity that involves the handle
+/// type, if known.
+///
+/// \returns A suitable handle type, if there are no
+/// errors. Otherwise, returns a NULL type.
+QualType Sema::BuildHandleType(QualType T,
+                                SourceLocation Loc, DeclarationName Entity) {
+#if 0
+  if (T->isReferenceType()) {
+    // C++ 8.3.2p4: There shall be no ... pointers to references ...
+    Diag(Loc, diag::err_illegal_decl_pointer_to_reference)
+      << getPrintableNameForEntity(Entity) << T;
+    return QualType();
+  }
+#endif
+  // Build the handle type.
+  return Context.getHandleType(T);
+}
+
+
+/// \brief Build a tracking reference type.
+///
+/// \param T The type to which we'll be building a tracking reference.
+///
+/// \param Loc The location of the entity whose type involves this type.
+///
+/// \param Entity The name of the entity that involves the type, if known.
+///
+/// \returns A suitable tracking reference type, if there are no
+/// errors. Otherwise, returns a NULL type.
+QualType Sema::BuildTrackingReferenceType(QualType T,
+                                SourceLocation Loc, DeclarationName Entity) {
+  // Build the tracking reference type.
+  return Context.getTrackingReferenceType(T);
+}
+
 
 /// \brief Build a reference type.
 ///
@@ -1875,6 +1933,8 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::Array: // suppress if written (id[])?
     case DeclaratorChunk::Function:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       return;
     }
   }
@@ -2124,6 +2184,13 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       case TTK_Union:  Error = 2; /* Union member */ break;
       case TTK_Class:  Error = 3; /* Class member */ break;
       case TTK_Interface: Error = 4; /* Interface member */ break;
+      // C++/CLI extensions
+      case TTK_RefClass:   Error = 1; break;
+      case TTK_RefStruct:  Error = 1; break;
+      case TTK_ValueClass: Error = 1; break;
+      case TTK_ValueStruct:      Error = 1; break;
+      case TTK_InterfaceClass:   Error = 1; break;
+      case TTK_InterfaceStruct:  Error = 1; break;
       }
       break;
     case Declarator::CXXCatchContext:
@@ -2152,6 +2219,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         Error = 12; // conversion-type-id
       break;
     case Declarator::TypeNameContext:
+	case Declarator::CXXCLIGCNewContext:
       Error = 13; // Generic
       break;
     case Declarator::FileContext:
@@ -2237,6 +2305,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case Declarator::ConversionIdContext:
     case Declarator::TemplateParamContext:
     case Declarator::CXXNewContext:
+	case Declarator::CXXCLIGCNewContext:
     case Declarator::CXXCatchContext:
     case Declarator::ObjCCatchContext:
     case Declarator::TemplateTypeArgContext:
@@ -2323,6 +2392,9 @@ static void checkQualifiedFunction(Sema &S, QualType T,
   case DeclaratorChunk::Reference:
     DiagKind = 2;
     break;
+  case DeclaratorChunk::Handle:
+  case DeclaratorChunk::TrackingReference:
+    return;
   }
 
   assert(DiagKind != -1);
@@ -2581,7 +2653,22 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       T = S.BuildPointerType(T, DeclType.Loc, Name);
       if (DeclType.Ptr.TypeQuals)
         T = S.BuildQualifiedType(T, DeclType.Loc, DeclType.Ptr.TypeQuals);
+      break;
+    case DeclaratorChunk::Handle:
+      // If C++/CLI extensions are disabled, emit an error.
+      if (!LangOpts.CPlusPlusCLI)
+        S.Diag(DeclType.Loc, diag::err_handles_disable);
 
+      T = S.BuildHandleType(T, D.getIdentifierLoc(), Name);
+      if (DeclType.Han.TypeQuals)
+        T = S.BuildQualifiedType(T, DeclType.Loc, DeclType.Han.TypeQuals);
+      break;
+    case DeclaratorChunk::TrackingReference:
+      // If C++/CLI extensions are disabled, emit an error.
+      if (!LangOpts.CPlusPlusCLI)
+        S.Diag(DeclType.Loc, diag::err_trackrefs_disable);
+  
+      T = S.BuildTrackingReferenceType(T, D.getIdentifierLoc(), Name);
       break;
     case DeclaratorChunk::Reference: {
       // Verify that we're not building a reference to pointer to function with
@@ -2661,6 +2748,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
             break;
           case DeclaratorChunk::Function:
           case DeclaratorChunk::BlockPointer:
+          case DeclaratorChunk::Handle:
+          case DeclaratorChunk::TrackingReference:
             // These are invalid anyway, so just ignore.
             break;
           }
@@ -3211,6 +3300,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     case Declarator::ObjCResultContext:     // FIXME: special diagnostic here?
     case Declarator::TypeNameContext:
     case Declarator::CXXNewContext:
+	case Declarator::CXXCLIGCNewContext:
     case Declarator::AliasDeclContext:
     case Declarator::AliasTemplateContext:
     case Declarator::MemberContext:
@@ -3343,6 +3433,8 @@ static void transferARCOwnership(TypeProcessingState &state,
 
     case DeclaratorChunk::Function:
     case DeclaratorChunk::MemberPointer:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
       return;
     }
   }
@@ -3665,6 +3757,15 @@ namespace {
       assert(Chunk.Kind == DeclaratorChunk::Pointer);
       TL.setStarLoc(Chunk.Loc);
     }
+    void VisitHandleTypeLoc(HandleTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::Handle);
+      TL.setCaretLoc(Chunk.Loc);
+    }
+    void VisitTrackingReferenceTypeLoc(TrackingReferenceTypeLoc TL) {
+      assert(Chunk.Kind == DeclaratorChunk::TrackingReference);
+      TL.setPercentLoc(Chunk.Loc);
+    }
+
     void VisitMemberPointerTypeLoc(MemberPointerTypeLoc TL) {
       assert(Chunk.Kind == DeclaratorChunk::MemberPointer);
       const CXXScopeSpec& SS = Chunk.Mem.Scope();

@@ -1527,6 +1527,8 @@ public:
   bool isPointerType() const;
   bool isAnyPointerType() const;   // Any C pointer or ObjC object pointer
   bool isBlockPointerType() const;
+  bool isHandleType() const;
+  bool isTrackingReferenceType() const;
   bool isVoidPointerType() const;
   bool isReferenceType() const;
   bool isLValueReferenceType() const;
@@ -1585,6 +1587,12 @@ public:
 
   bool isOpenCLSpecificType() const;            // Any OpenCL specific type
 
+  // CLI tests
+  bool isCLIRecordType() const;
+  bool isCLIValueType() const;
+  bool isCLIReferenceType() const;
+  bool isCLIArrayType() const;
+
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
   /// than implicitly __strong.
@@ -1597,6 +1605,7 @@ public:
     STK_CPointer,
     STK_BlockPointer,
     STK_ObjCObjectPointer,
+	STK_CLIHandle,
     STK_MemberPointer,
     STK_Bool,
     STK_Integral,
@@ -1670,6 +1679,7 @@ public:
   // Type Checking Functions: Check to see if this type is structurally the
   // specified type, ignoring typedefs and qualifiers, and return a pointer to
   // the best type we can.
+  const RecordType *getAsRecordType() const;
   const RecordType *getAsStructureType() const;
   /// NOTE: getAs*ArrayType are methods on ASTContext.
   const RecordType *getAsUnionType() const;
@@ -2167,6 +2177,56 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeClass() == RValueReference;
   }
+};
+
+/// TrackingReferenceType - C++/CLI [8.2.5]
+///
+class TrackingReferenceType : public ReferenceType {
+  TrackingReferenceType(QualType Referencee, QualType CanonicalRef) :
+    ReferenceType(TrackingReference, Referencee, CanonicalRef, true) {}
+  friend class ASTContext; // ASTContext creates these
+public:
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == TrackingReference;
+  }
+  static bool classof(const TrackingReferenceType *) { return true; }
+};
+
+/// HandleType - pointer to a handle type.
+/// This type is to represent GC-allocated CLR types.
+class HandleType : public Type, public llvm::FoldingSetNode {
+  QualType PointeeType;  // Handle is some kind of pointer type
+  HandleType(QualType Pointee, QualType CanonicalCls) :
+    Type(Handle, CanonicalCls, Pointee->isDependentType(),
+         Pointee->isInstantiationDependentType(),
+         Pointee->isVariablyModifiedType(),
+         Pointee->containsUnexpandedParameterPack()),
+    PointeeType(Pointee) {
+  }
+  friend class ASTContext;  // ASTContext creates these.
+
+public:
+
+  // Get the pointee type. Pointee is required to always be a function type.
+  QualType getPointeeType() const { return PointeeType; }
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+      Profile(ID, getPointeeType());
+  }
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType Pointee) {
+     ID.AddPointer(Pointee.getAsOpaquePtr());
+  }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Handle;
+  }
+  static bool classof(const HandleType *) { return true; }
 };
 
 /// MemberPointerType - C++ 8.3.3 - Pointers to members
@@ -3341,7 +3401,9 @@ public:
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  static bool classof(const Type *T) { return T->getTypeClass() == Record; }
+  static bool classof(const Type *T) { 
+	  return T->getTypeClass() == Record || T->getTypeClass() == CLIArray; 
+  }
 };
 
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
@@ -3907,7 +3969,20 @@ enum TagTypeKind {
   /// \brief The "class" keyword.
   TTK_Class,
   /// \brief The "enum" keyword.
-  TTK_Enum
+  TTK_Enum,
+  /// C++/CLI extensions.
+  /// \brief The "ref class" keywords.
+  TTK_RefClass,
+  /// \brief The "ref struct" keywords.
+  TTK_RefStruct,
+  /// \brief The "value class" keywords.
+  TTK_ValueClass,
+  /// \brief The "value struct" keywords.
+  TTK_ValueStruct,
+  /// \brief The "interface class" keywords.
+  TTK_InterfaceClass,
+  /// \brief The "interface struct" keywords.
+  TTK_InterfaceStruct
 };
 
 /// \brief The elaboration keyword that precedes a qualified type name or
@@ -4607,6 +4682,8 @@ class AtomicType : public Type, public llvm::FoldingSetNode {
   }
 };
 
+#include "clang/AST/TypeCLI.h"
+
 /// A qualifier set is used to build a set of qualifiers.
 class QualifierCollector : public Qualifiers {
 public:
@@ -4862,10 +4939,16 @@ inline bool Type::isPointerType() const {
   return isa<PointerType>(CanonicalType);
 }
 inline bool Type::isAnyPointerType() const {
-  return isPointerType() || isObjCObjectPointerType();
+  return isPointerType() || isObjCObjectPointerType() || isHandleType();
 }
 inline bool Type::isBlockPointerType() const {
   return isa<BlockPointerType>(CanonicalType);
+}
+inline bool Type::isHandleType() const {
+  return isa<HandleType>(CanonicalType);
+}
+inline bool Type::isTrackingReferenceType() const {
+  return isa<TrackingReferenceType>(CanonicalType);
 }
 inline bool Type::isReferenceType() const {
   return isa<ReferenceType>(CanonicalType);
@@ -5099,6 +5182,7 @@ inline bool Type::isScalarType() const {
          isa<BlockPointerType>(CanonicalType) ||
          isa<MemberPointerType>(CanonicalType) ||
          isa<ComplexType>(CanonicalType) ||
+		 isa<HandleType>(CanonicalType) ||
          isa<ObjCObjectPointerType>(CanonicalType);
 }
 
@@ -5138,6 +5222,7 @@ inline bool Type::canDecayToPointerType() const {
 }
 
 inline bool Type::hasPointerRepresentation() const {
+  if (isHandleType()) return true;
   return (isPointerType() || isReferenceType() || isBlockPointerType() ||
           isObjCObjectPointerType() || isNullPtrType());
 }

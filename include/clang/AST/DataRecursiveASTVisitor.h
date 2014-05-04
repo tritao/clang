@@ -17,21 +17,25 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclOpenMP.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtCLI.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
+#include "clang/AST/TypeCLI.h"
 #include "clang/AST/TypeLoc.h"
 
 // The following three macros are used for meta programming.  The code
@@ -968,6 +972,12 @@ DEF_TRAVERSE_TYPE(AtomicType, {
     TRY_TO(TraverseType(T->getValueType()));
   })
 
+DEF_TRAVERSE_TYPE(HandleType, { })
+
+DEF_TRAVERSE_TYPE(TrackingReferenceType, { })
+
+DEF_TRAVERSE_TYPE(CLIArrayType, { })
+
 #undef DEF_TRAVERSE_TYPE
 
 // ----------------- TypeLoc traversal -----------------
@@ -1207,6 +1217,13 @@ DEF_TRAVERSE_TYPELOC(ObjCObjectPointerType, {
 DEF_TRAVERSE_TYPELOC(AtomicType, {
     TRY_TO(TraverseTypeLoc(TL.getValueLoc()));
   })
+
+DEF_TRAVERSE_TYPELOC(CLIArrayType, { })
+
+
+DEF_TRAVERSE_TYPELOC(HandleType, { })
+ 
+DEF_TRAVERSE_TYPELOC(TrackingReferenceType, { })
 
 #undef DEF_TRAVERSE_TYPELOC
 
@@ -1880,6 +1897,11 @@ DEF_TRAVERSE_DECL(ImplicitParamDecl, {
     TRY_TO(TraverseVarHelper(D));
   })
 
+// CLI decls
+DEF_TRAVERSE_DECL(CLIPropertyDecl, { })
+
+DEF_TRAVERSE_DECL(CLIEventDecl, { })
+
 DEF_TRAVERSE_DECL(NonTypeTemplateParmDecl, {
     // A non-type template parameter, e.g. "S" in template<int S> class Foo ...
     TRY_TO(TraverseDeclaratorHelper(D));
@@ -1986,6 +2008,13 @@ DEF_TRAVERSE_STMT(ObjCAtTryStmt, { })
 DEF_TRAVERSE_STMT(ObjCForCollectionStmt, { })
 DEF_TRAVERSE_STMT(ObjCAutoreleasePoolStmt, { })
 DEF_TRAVERSE_STMT(CXXForRangeStmt, { })
+
+// CLI Stmts
+DEF_TRAVERSE_STMT(CLIGCNewExpr, { })
+DEF_TRAVERSE_STMT(CLIForEachStmt, { })
+DEF_TRAVERSE_STMT(CLIValueClassInitExpr, { })
+DEF_TRAVERSE_STMT(CLIPropertyRefExpr, { })
+
 DEF_TRAVERSE_STMT(MSDependentExistsStmt, {
     TRY_TO(TraverseNestedNameSpecifierLoc(S->getQualifierLoc()));
     TRY_TO(TraverseDeclarationNameInfo(S->getNameInfo()));
@@ -2291,6 +2320,7 @@ DEF_TRAVERSE_STMT(UnresolvedMemberExpr, {
 
 DEF_TRAVERSE_STMT(MSPropertyRefExpr, {})
 DEF_TRAVERSE_STMT(SEHTryStmt, {})
+DEF_TRAVERSE_STMT(SEHLeaveStmt, {})
 DEF_TRAVERSE_STMT(SEHExceptStmt, {})
 DEF_TRAVERSE_STMT(SEHFinallyStmt,{})
 DEF_TRAVERSE_STMT(CapturedStmt, {

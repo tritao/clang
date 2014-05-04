@@ -128,6 +128,15 @@ public:
                                   const Module *Imported) {
   }
 
+  /// \brief Callback invoked whenever an using directive (\c \#using)
+  /// has been processed.
+  virtual void UsingDirective(SourceLocation HashLoc,
+                              const Token &UsingTok,
+                              StringRef FileName,
+                              bool IsAngled,
+                              CharSourceRange FilenameRange) {
+  }
+
   /// \brief Callback invoked whenever there was an explicit module-import
   /// syntax.
   ///
@@ -369,6 +378,16 @@ public:
                                FilenameRange, File, SearchPath, RelativePath,
                                Imported);
   }
+
+  virtual void UsingDirective(SourceLocation HashLoc,
+                              const Token &UsingTok,
+                              StringRef FileName,
+                              bool IsAngled,
+                              CharSourceRange FilenameRange) {
+    First->UsingDirective(HashLoc, UsingTok, FileName, IsAngled, FilenameRange);
+    Second->UsingDirective(HashLoc, UsingTok, FileName, IsAngled, FilenameRange);
+  }
+
 
   virtual void moduleImport(SourceLocation ImportLoc,
                             ModuleIdPath Path,

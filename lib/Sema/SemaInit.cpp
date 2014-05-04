@@ -15,6 +15,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCLI.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Lex/Preprocessor.h"
@@ -291,6 +292,11 @@ class InitListChecker {
                       bool SubobjectIsDesignatorContext, unsigned &Index,
                       InitListExpr *StructuredList,
                       unsigned &StructuredIndex);
+  void CheckCLIArrayType(const InitializedEntity &Entity,
+                         InitListExpr *IList, QualType &DeclType,
+                         unsigned &Index,
+                         InitListExpr *StructuredList,
+                         unsigned &StructuredIndex);
   bool CheckDesignatedInitializer(const InitializedEntity &Entity,
                                   InitListExpr *IList, DesignatedInitExpr *DIE,
                                   unsigned DesigIdx,
@@ -805,6 +811,9 @@ void InitListChecker::CheckListElementTypes(const InitializedEntity &Entity,
       SemaRef.Diag(IList->getLocStart(), diag::err_init_objc_class)
         << DeclType;
     hadError = true;
+  } else if (isa<CLIArrayType>(DeclType)) {
+    CheckCLIArrayType(Entity, IList, DeclType, Index,
+                      StructuredList, StructuredIndex);
   } else {
     if (!VerifyOnly)
       SemaRef.Diag(IList->getLocStart(), diag::err_illegal_initializer_type)
@@ -1577,6 +1586,30 @@ void InitListChecker::CheckStructUnionTypes(const InitializedEntity &Entity,
   else
     CheckImplicitInitList(MemberEntity, IList, Field->getType(), Index,
                           StructuredList, StructuredIndex);
+}
+
+void InitListChecker::CheckCLIArrayType(const InitializedEntity &Entity,
+                                        InitListExpr *IList, QualType &DeclType,
+                                        unsigned &Index,
+                                        InitListExpr *StructuredList,
+                                        unsigned &StructuredIndex) {
+  const CLIArrayType *arrayType = DeclType->getAs<CLIArrayType>();
+  assert(arrayType && "Expected a CLI array type");
+
+  QualType elementType = arrayType->getElementType();
+  unsigned arrayRank = arrayType->getRank();
+
+  // FIXME: Implement CLI array semantic checking properly
+  while (Index < IList->getNumInits()) {
+    Expr *Init = IList->getInit(Index);
+
+    InitializedEntity ElementEntity =
+      InitializedEntity::InitializeElement(SemaRef.Context, StructuredIndex,
+                                           Entity);
+    // Check this element.
+    CheckSubElementType(ElementEntity, IList, elementType, Index,
+                        StructuredList, StructuredIndex);
+  }
 }
 
 /// \brief Expand a field designator that refers to a member of an
@@ -2472,6 +2505,9 @@ InitializedEntity::InitializedEntity(ASTContext &Context, unsigned Index,
   } else if (const VectorType *VT = Parent.getType()->getAs<VectorType>()) {
     Kind = EK_VectorElement;
     Type = VT->getElementType();
+  } else if (const CLIArrayType *AT = Parent.getType()->getAs<CLIArrayType>()) {
+    Kind = EK_ArrayElement;
+    Type = AT->getElementType();
   } else {
     const ComplexType *CT = Parent.getType()->getAs<ComplexType>();
     assert(CT && "Unexpected type");
@@ -2513,6 +2549,7 @@ DeclarationName InitializedEntity::getName() const {
   case EK_Result:
   case EK_Exception:
   case EK_New:
+  case EK_GCNew:
   case EK_Temporary:
   case EK_Base:
   case EK_Delegating:
@@ -2541,6 +2578,7 @@ DeclaratorDecl *InitializedEntity::getDecl() const {
   case EK_Result:
   case EK_Exception:
   case EK_New:
+  case EK_GCNew:
   case EK_Temporary:
   case EK_Base:
   case EK_Delegating:
@@ -2568,6 +2606,7 @@ bool InitializedEntity::allowsNRVO() const {
   case EK_Parameter_CF_Audited:
   case EK_Member:
   case EK_New:
+  case EK_GCNew:
   case EK_Temporary:
   case EK_CompoundLiteralInit:
   case EK_Base:
@@ -2655,6 +2694,9 @@ void InitializationSequence::Step::Destroy() {
   case SK_CAssignment:
   case SK_StringInit:
   case SK_ObjCObjectConversion:
+  case SK_CLIValueTypeZeroInit:
+  case SK_CLIValueTypeCopyInit:
+  case SK_CLIArrayInit:
   case SK_ArrayInit:
   case SK_ParenthesizedArrayInit:
   case SK_PassByIndirectCopyRestore:
@@ -2864,6 +2906,29 @@ void InitializationSequence::AddStringInitStep(QualType T) {
 void InitializationSequence::AddObjCObjectConversionStep(QualType T) {
   Step S;
   S.Kind = SK_ObjCObjectConversion;
+  S.Type = T;
+  Steps.push_back(S);
+}
+
+void InitializationSequence::AddCLIValueZeroInitializationStep(QualType T) {
+  Step S;
+  S.Kind = SK_CLIValueTypeZeroInit;
+  S.Type = T;
+  Steps.push_back(S);
+}
+
+void InitializationSequence::AddCLIValueCopyInitializationStep(QualType T,
+                                                               Expr *E) {
+  Step S;
+  S.Kind = SK_CLIValueTypeCopyInit;
+  S.Type = T;
+  S.InitExpr = E;
+  Steps.push_back(S);
+}
+
+void InitializationSequence::AddCLIArrayInitializationStep(QualType T) {
+  Step S;
+  S.Kind = SK_CLIArrayInit;
   S.Type = T;
   Steps.push_back(S);
 }
@@ -3153,6 +3218,25 @@ static void TryConstructorInitialization(Sema &S,
     Args = MultiExprArg(ILE->getInits(), ILE->getNumInits());
   }
 
+  // C++/CLI 22.3.2:
+  //    - if T is a C++/CLI value class type, then we have to perform either
+  // zero or copy-initialization.
+  if (DestRecordType->isCLIValueType()) {
+    if (Args.size() == 0) {
+      // "every value class implicitly has a parameterless instance constructor,
+      // which always returns the value that results from setting all value type
+      // fields to their default value and all handle type fields to nullptr."
+      Sequence.AddCLIValueZeroInitializationStep(Entity.getType());
+      return;
+    } else if (Args.size() == 1 && Args[0]->getType()->isCLIValueType()) {
+      // "The copy construction semantics of a value class are always to bitwise
+      // copy all members of the value class"
+      // FIXME: Check if the arg is compatible with dest value type
+      Sequence.AddCLIValueCopyInitializationStep(Entity.getType(), Args[0]);
+      return;
+    }
+  }
+
   // C++11 [over.match.list]p1:
   //   - If no viable initializer-list constructor is found, overload resolution
   //     is performed again, where the candidate functions are all the
@@ -3321,6 +3405,14 @@ static void TryListInitialization(Sema &S,
                                   InitListExpr *InitList,
                                   InitializationSequence &Sequence) {
   QualType DestType = Entity.getType();
+
+  // C++/CLI array initializers.
+  if (S.getLangOpts().CPlusPlusCLI && DestType->isHandleType()) {
+    if (DestType->getPointeeType()->isCLIArrayType()) {
+      Sequence.AddCLIArrayInitializationStep(DestType->getPointeeType());
+      return;
+    }
+  }
 
   // C++ doesn't allow scalar initialization with more than one argument.
   // But C99 complex numbers are scalars and it makes sense there.
@@ -4636,6 +4728,12 @@ void InitializationSequence::InitializeFrom(Sema &S,
   }
   assert(Args.size() == 1 && "Zero-argument case handled above");
 
+  // C++/CLI value type boxing
+  if (DestType->isHandleType() && SourceType->isCLIValueType()) {
+    goto SkipConversions;
+  }
+
+
   //    - Otherwise, if the source type is a (possibly cv-qualified) class
   //      type, conversion functions are considered.
   if (!SourceType.isNull() && SourceType->isRecordType()) {
@@ -4644,6 +4742,8 @@ void InitializationSequence::InitializeFrom(Sema &S,
     MaybeProduceObjCObject(S, *this, Entity);
     return;
   }
+
+SkipConversions:
 
   //    - Otherwise, the initial value of the object being initialized is the
   //      (possibly converted) value of the initializer expression. Standard
@@ -4713,6 +4813,7 @@ getAssignmentAction(const InitializedEntity &Entity, bool Diagnose = false) {
   switch(Entity.getKind()) {
   case InitializedEntity::EK_Variable:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Exception:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
@@ -4761,6 +4862,7 @@ static bool shouldBindAsTemporary(const InitializedEntity &Entity) {
   case InitializedEntity::EK_Member:
   case InitializedEntity::EK_Result:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Variable:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
@@ -4788,6 +4890,7 @@ static bool shouldDestroyTemporary(const InitializedEntity &Entity) {
   switch (Entity.getKind()) {
     case InitializedEntity::EK_Result:
     case InitializedEntity::EK_New:
+	case InitializedEntity::EK_GCNew:
     case InitializedEntity::EK_Base:
     case InitializedEntity::EK_Delegating:
     case InitializedEntity::EK_VectorElement:
@@ -4882,6 +4985,7 @@ static SourceLocation getInitializationLoc(const InitializedEntity &Entity,
   case InitializedEntity::EK_Parameter_CF_Audited:
   case InitializedEntity::EK_Temporary:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
   case InitializedEntity::EK_VectorElement:
@@ -5291,6 +5395,7 @@ InitializedEntityOutlivesFullExpression(const InitializedEntity &Entity) {
   case InitializedEntity::EK_Exception:
   case InitializedEntity::EK_Member:
   case InitializedEntity::EK_New:
+  case InitializedEntity::EK_GCNew:
   case InitializedEntity::EK_Base:
   case InitializedEntity::EK_Delegating:
     return true;
@@ -5671,6 +5776,9 @@ InitializationSequence::Perform(Sema &S,
   case SK_ConstructorInitialization:
   case SK_ListConstructorCall:
   case SK_ZeroInitialization:
+  case SK_CLIValueTypeZeroInit:
+  case SK_CLIValueTypeCopyInit:
+  case SK_CLIArrayInit:
     break;
   }
 
@@ -6136,6 +6244,44 @@ InitializationSequence::Perform(Sema &S,
                           CK_ObjCObjectLValueCast,
                           CurInit.get()->getValueKind());
       break;
+
+   case SK_CLIValueTypeZeroInit: {
+      TypeSourceInfo *TSInfo = Entity.getTypeSourceInfo();
+      if (!TSInfo)
+        TSInfo = S.Context.getTrivialTypeSourceInfo(Step->Type,
+                                                    Kind.getRange().getBegin());
+      CurInit = S.Owned(new (S.Context) CLIValueClassInitExpr(TSInfo->getType(),
+                                                              TSInfo,
+                                                              CLI_VCIK_ZeroInit,
+                                                              /*InitExpr=*/0));
+      break;
+    }
+
+    case SK_CLIValueTypeCopyInit: {
+      TypeSourceInfo *TSInfo = Entity.getTypeSourceInfo();
+      if (!TSInfo)
+        TSInfo = S.Context.getTrivialTypeSourceInfo(Step->Type,
+                                                    Kind.getRange().getBegin());
+      CurInit = S.Owned(new (S.Context) CLIValueClassInitExpr(TSInfo->getType(),
+                                                              TSInfo,
+                                                              CLI_VCIK_CopyInit,
+                                                              Step->InitExpr));
+      break;
+    }
+
+    case SK_CLIArrayInit: {
+      TypeSourceInfo *TSInfo = Entity.getTypeSourceInfo();
+      if (!TSInfo)
+        TSInfo = S.Context.getTrivialTypeSourceInfo(Step->Type,
+                                                    Kind.getRange().getBegin());
+      ExprResult NewExpr = S.BuildCXXCLIGCNew(Kind.getRange().getBegin(),
+                                              Step->Type,
+                                              TSInfo,
+                                              Kind.getRange(),
+                                              (Expr *)Args[0], 0);
+      CurInit = NewExpr.take();
+      break;
+    }
 
     case SK_ArrayInit:
       // Okay: we checked everything before creating this step. Note that
@@ -6937,6 +7083,18 @@ void InitializationSequence::dump(raw_ostream &OS) const {
 
     case SK_ObjCObjectConversion:
       OS << "Objective-C object conversion";
+      break;
+
+    case SK_CLIValueTypeZeroInit:
+      OS << "C++/CLI value type zero-initialization";
+      break;
+
+    case SK_CLIValueTypeCopyInit:
+      OS << "C++/CLI value type copy-initialization";
+      break;
+
+    case SK_CLIArrayInit:
+      OS << "C++/CLI array initialization";
       break;
 
     case SK_ArrayInit:

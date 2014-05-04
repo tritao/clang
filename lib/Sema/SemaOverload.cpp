@@ -13,7 +13,9 @@
 
 #include "clang/Sema/Overload.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/CXXInheritance.h"
+#include "clang/AST/DeclCLI.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
@@ -25,6 +27,7 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/SemaCLI.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"
@@ -110,14 +113,17 @@ GetConversionCategory(ImplicitConversionKind Kind) {
   static const ImplicitConversionCategory
     Category[(int)ICK_Num_Conversion_Kinds] = {
     ICC_Identity,
+    ICC_Identity,
     ICC_Lvalue_Transformation,
     ICC_Lvalue_Transformation,
     ICC_Lvalue_Transformation,
     ICC_Identity,
     ICC_Qualification_Adjustment,
+    ICC_Qualification_Adjustment,
     ICC_Promotion,
     ICC_Promotion,
     ICC_Promotion,
+    ICC_Promotion,
     ICC_Conversion,
     ICC_Conversion,
     ICC_Conversion,
@@ -130,6 +136,7 @@ GetConversionCategory(ImplicitConversionKind Kind) {
     ICC_Conversion,
     ICC_Conversion,
     ICC_Conversion,
+	ICC_Conversion,
     ICC_Conversion
   };
   return Category[(int)Kind];
@@ -146,10 +153,14 @@ ImplicitConversionRank GetConversionRank(ImplicitConversionKind Kind) {
     ICR_Exact_Match,
     ICR_Exact_Match,
     ICR_Exact_Match,
+    ICR_Exact_Match,
+    ICR_Exact_Match,
+    ICR_Promotion,
     ICR_Promotion,
     ICR_Promotion,
     ICR_Promotion,
     ICR_Conversion,
+	ICR_Conversion,
     ICR_Conversion,
     ICR_Conversion,
     ICR_Conversion,
@@ -173,20 +184,24 @@ ImplicitConversionRank GetConversionRank(ImplicitConversionKind Kind) {
 const char* GetImplicitConversionName(ImplicitConversionKind Kind) {
   static const char* const Name[(int)ICK_Num_Conversion_Kinds] = {
     "No conversion",
+	"String literal conversion",
     "Lvalue-to-rvalue",
     "Array-to-pointer",
     "Function-to-pointer",
     "Noreturn adjustment",
     "Qualification",
+	"Boolean equivalence",
     "Integral promotion",
     "Floating point promotion",
     "Complex promotion",
+	"Boxing conversion",
     "Integral conversion",
     "Floating conversion",
     "Complex conversion",
     "Floating-integral conversion",
     "Pointer conversion",
     "Pointer-to-member conversion",
+	"Handle conversion",
     "Boolean conversion",
     "Compatible-types conversion",
     "Derived-to-base conversion",
@@ -1412,6 +1427,115 @@ static bool IsVectorConversion(Sema &S, QualType FromType,
   return false;
 }
 
+/// IsHandleConversion - Determines whether the conversion of the
+/// expression From, which has the (possibly adjusted) type FromType,
+/// can be converted to the type ToType via an handle conversion.
+
+static bool IsHandleStringConversion(Sema &S, Expr *From, QualType FromType,
+                                     QualType ToType,
+                                     bool InOverloadResolution,
+                                     QualType &ConvertedType,
+                                     StandardConversionSequence& SCS) {
+  // 14.2.5 String literal conversions
+  // String literals can be converted to one of two types: System::String^
+  // or "array of 'n' const char".
+
+  const HandleType *ToHandle = ToType->getAs<HandleType>();
+  if (!ToHandle)
+    return false;
+
+  QualType PointeeType = ToHandle->getPointeeType();
+
+  StringLiteral *SL = dyn_cast<StringLiteral>(From);
+  if (!SL)
+    return false;
+
+  CLIPrimitiveTypes &Types = S.getCLIContext()->Types;
+  QualType StringTy = Types.String.Ty->getAs<HandleType>()->getPointeeType();
+  QualType ObjectTy = Types.Object.Ty->getAs<HandleType>()->getPointeeType();
+
+  if (S.Context.hasSameType(PointeeType, StringTy) ||
+      S.Context.hasSameType(PointeeType, ObjectTy)) {
+    ConvertedType = ToType;
+    SCS.First = ICK_Literal_To_String;
+    return true;
+  }
+
+  return false;
+}
+
+static bool isNullPointerConstantForConversion(Expr *Expr,
+                                               bool InOverloadResolution,
+                                               ASTContext &Context);
+
+static bool IsHandleConversion(Sema &S, Expr *From, QualType FromType,
+                              QualType ToType,
+                              bool InOverloadResolution,
+                              QualType& ConvertedType,
+                              StandardConversionSequence& SCS) { 
+  const HandleType* ToTypeHandle = ToType->getAs<HandleType>();
+  if (!ToTypeHandle)
+    return false;
+
+  QualType FromPointee = FromType->getPointeeType();
+  QualType ToPointee = ToType->getPointeeType();
+  
+  if (!FromPointee.isNull() && !ToPointee.isNull()) {
+    CXXBasePaths Paths;
+    if (S.IsDerivedFrom(FromPointee, ToPointee)) {
+      ConvertedType = ToType;
+      SCS.Second = ICK_Handle_Conversion;
+      return true;
+    }
+
+    if (const CLIArrayType *FromArray = FromPointee->getAs<CLIArrayType>()) {
+      QualType FromElement = FromArray->getElementType();
+      assert(FromElement->isHandleType());
+      
+      if (const CLIArrayType *ToArray = ToPointee->getAs<CLIArrayType>()) {
+        if (FromArray->getRank() != ToArray->getRank())
+          return false;
+
+        QualType ToElement = ToArray->getElementType();
+        assert(ToElement->isHandleType());
+
+        if (S.Context.hasSameType(FromElement, ToElement)) {
+          ConvertedType = ToType;
+          SCS.Second = ICK_Identity;
+          return true;
+        }
+
+        CXXBasePaths Paths;
+        if (S.IsDerivedFrom(FromElement, ToElement)) {
+          ConvertedType = ToType;
+          SCS.Second = ICK_Handle_Conversion;
+          return true;
+        }
+      }
+    }
+
+    if (S.Context.hasSameType(ToType, S.getCLIContext()->Types.Array.Ty)) {
+      ConvertedType = ToType;
+      SCS.Second = ICK_Handle_Conversion;
+      return true;
+    }
+  }
+
+  // A null pointer constant can be converted to an handle type (C++/CLI 14.2.1).
+  if (isNullPointerConstantForConversion(From, InOverloadResolution, S.Context)) {
+    ConvertedType = ToType;
+    SCS.Second = ICK_Handle_Conversion;
+    return true;
+  }
+
+  return false;
+}
+
+// In SemaCLI.cpp
+bool IsBoxingConversion(Sema &S, QualType FromType, QualType ToType,
+                        QualType &ConvertedType);
+
+
 static bool tryAtomicConversion(Sema &S, Expr *From, QualType ToType,
                                 bool InOverloadResolution,
                                 StandardConversionSequence &SCS,
@@ -1441,7 +1565,7 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
   // There are no standard conversions for class types in C++, so
   // abort early. When overloading in C, however, we do permit
   if (FromType->isRecordType() || ToType->isRecordType()) {
-    if (S.getLangOpts().CPlusPlus)
+    if (S.getLangOpts().CPlusPlus  && !S.getLangOpts().CPlusPlusCLI)
       return false;
 
     // When we're overloading in C, we allow, as standard conversions,
@@ -1506,6 +1630,15 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
   //   A glvalue (3.10) of a non-function, non-array type T can
   //   be converted to a prvalue.
   bool argIsLValue = From->isGLValue();
+
+  QualType ConvertedType;
+  if (S.getLangOpts().CPlusPlusCLI &&
+      IsHandleStringConversion(S, From, FromType, ToType, InOverloadResolution,
+                               ConvertedType, SCS)) {
+    // String literal conversions (C++/CLI 14.2.1).
+    FromType = ConvertedType;
+  } else
+
   if (argIsLValue &&
       !FromType->isFunctionType() && !FromType->isArrayType() &&
       S.Context.getCanonicalType(FromType) != S.Context.OverloadTy) {
@@ -1579,6 +1712,11 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
     // Floating point promotion (C++ 4.6).
     SCS.Second = ICK_Floating_Promotion;
     FromType = ToType.getUnqualifiedType();
+  } else if (S.getLangOpts().CPlusPlusCLI &&
+             IsBoxingConversion(S, FromType, ToType, ConvertedType)) {
+    // Boxing conversion (C++/CLI 14.2.6).
+    SCS.Second = ICK_Boxing_Conversion;
+    FromType = ConvertedType;
   } else if (S.IsComplexPromotion(FromType, ToType)) {
     // Complex promotion (Clang extension)
     SCS.Second = ICK_Complex_Promotion;
@@ -1635,6 +1773,11 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
   } else if (IsVectorConversion(S, FromType, ToType, SecondICK)) {
     SCS.Second = SecondICK;
     FromType = ToType.getUnqualifiedType();
+ } else if (S.getLangOpts().CPlusPlusCLI &&
+             IsHandleConversion(S, From, FromType, ToType, InOverloadResolution,
+                                ConvertedType, SCS)) {
+    // Handle conversions (C++/CLI 14.2.1).
+    FromType = ConvertedType;
   } else if (!S.getLangOpts().CPlusPlus &&
              S.Context.typesAreCompatible(ToType, FromType)) {
     // Compatible conversions (Clang extension for C function overloading)
@@ -3640,6 +3783,23 @@ CompareStandardConversionSequences(Sema &S,
     }
   }
 
+  // C++/CLI 14.2.1.1 Ranking handle conversions
+  if (S.getLangOpts().CPlusPlusCLI ) {
+    QualType T1 = SCS1.getToType(2);
+    QualType T2 = SCS2.getToType(2);
+    const HandleType *T1HType = T1->getAs<HandleType>(),
+                     *T2HType = T2->getAs<HandleType>();
+    if (T1HType && T2HType) {
+      T1 = T1HType->getPointeeType().getUnqualifiedType();
+      T2 = T2HType->getPointeeType().getUnqualifiedType();
+
+      if (S.IsDerivedFrom(T2, T1))
+        return ImplicitConversionSequence::Better;
+      else if (S.IsDerivedFrom(T1, T2))
+        return ImplicitConversionSequence::Worse;
+    }
+  }
+
   // In Microsoft mode, prefer an integral conversion to a
   // floating-to-integral conversion if the integral conversion
   // is between types of the same size.
@@ -4735,9 +4895,11 @@ TryObjectArgumentInitialization(Sema &S, QualType FromType,
     // When we had a pointer, it's implicitly dereferenced, so we
     // better have an lvalue.
     assert(FromClassification.isLValue());
+  } else if (const HandleType *HT = FromType->getAs<HandleType>()) {
+    FromType = HT->getPointeeType();
   }
 
-  assert(FromType->isRecordType());
+  assert(FromType->isRecordType() || FromType->isCLIArrayType());
 
   // C++0x [over.match.funcs]p4:
   //   For non-static member functions, the type of the implicit object
@@ -4773,9 +4935,15 @@ TryObjectArgumentInitialization(Sema &S, QualType FromType,
   ImplicitConversionKind SecondKind;
   if (ClassTypeCanon == FromTypeCanon.getLocalUnqualifiedType()) {
     SecondKind = ICK_Identity;
-  } else if (S.IsDerivedFrom(FromType, ClassType))
+  } else if (S.IsDerivedFrom(FromType, ClassType)) {
     SecondKind = ICK_Derived_To_Base;
-  else {
+    if (FromType->isCLIRecordType() && ClassType->isCLIRecordType())
+      SecondKind = ICK_Handle_Conversion;
+  } else if (FromType->getAsCXXRecordDecl() == ClassType->getAsCXXRecordDecl()) {
+    // We need this for CLIArray since it derives from RecordType.
+    assert(FromType->isCLIRecordType());
+    SecondKind = ICK_Identity;
+  } else {
     ICS.setBad(BadConversionSequence::unrelated_class,
                FromType, ImplicitParamType);
     return ICS;
@@ -4832,12 +5000,16 @@ Sema::PerformObjectArgumentInitialization(Expr *From,
                                           CXXMethodDecl *Method) {
   QualType FromRecordType, DestType;
   QualType ImplicitParamRecordType  =
-    Method->getThisType(Context)->getAs<PointerType>()->getPointeeType();
+     Method->getThisType(Context)->getPointeeType();
 
   Expr::Classification FromClassification;
   if (const PointerType *PT = From->getType()->getAs<PointerType>()) {
     FromRecordType = PT->getPointeeType();
     DestType = Method->getThisType(Context);
+    FromClassification = Expr::Classification::makeSimpleLValue();
+  } else if (const HandleType *HT = From->getType()->getAs<HandleType>()) {
+    FromRecordType = HT->getPointeeType();
+    DestType = Context.getHandleType(FromRecordType);
     FromClassification = Expr::Classification::makeSimpleLValue();
   } else {
     FromRecordType = From->getType();
@@ -5555,14 +5727,28 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
 
   unsigned NumParams = Proto->getNumParams();
 
+  // (C++/CLI 18.4): A candidate function having fewer than m
+  // parameters is viable only if it has a params array in its
+  // last parameter.
+  QualType CLIParamsType;
+  bool HasCLIParams = getLangOpts().CPlusPlusCLI &&
+    HasCLIParamArrayAttribute(*this, Function, CLIParamsType);
+
+
   // (C++ 13.3.2p2): A candidate function having fewer than m
   // parameters is viable only if it has an ellipsis in its parameter
   // list (8.3.5).
-  if ((Args.size() + (PartialOverloading && Args.size())) > NumParams &&
+  if (!HasCLIParams) {
+     if ((Args.size() + (PartialOverloading && Args.size())) > NumParams &&
       !Proto->isVariadic()) {
-    Candidate.Viable = false;
-    Candidate.FailureKind = ovl_fail_too_many_arguments;
-    return;
+      Candidate.Viable = false;
+      Candidate.FailureKind = ovl_fail_too_many_arguments;
+      return;
+    }
+  } else {
+    // Remove the last arg from further checking it will try to convert
+    // the argument.
+    --NumParams;
   }
 
   // (C++ 13.3.2p2): A candidate function having more than m parameters
@@ -5609,11 +5795,28 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
         return;
       }
     } else {
+      if (HasCLIParams) {
+        QualType CLIParamsElemType = cast<CLIArrayType>(CLIParamsType->getAs<
+          HandleType>()->getPointeeType())->getElementType();
+
+        Candidate.Conversions[ArgIdx]
+          = TryCopyInitialization(*this, Args[ArgIdx], CLIParamsElemType,
+                                  SuppressUserConversions,
+                                  /*InOverloadResolution=*/true,
+                                  /*AllowObjCWritebackConversion=*/false);
+        Candidate.Conversions[ArgIdx].setCLIParamsArrayConversion();
+        if (Candidate.Conversions[ArgIdx].isBad()) {
+          Candidate.Viable = false;
+          Candidate.FailureKind = ovl_fail_bad_conversion;
+          break;
+        }
+      } else {
       // (C++ 13.3.2p2): For the purposes of overload resolution, any
       // argument for which there is no corresponding parameter is
       // considered to ""match the ellipsis" (C+ 13.3.3.1.3).
       Candidate.Conversions[ArgIdx].setEllipsis();
     }
+	}
   }
 
   if (EnableIfAttr *FailedAttr = CheckEnableIf(Function, Args)) {
@@ -6358,7 +6561,11 @@ void Sema::AddMemberOperatorCandidates(OverloadedOperatorKind Op,
   //   three sets of candidate functions, designated member
   //   candidates, non-member candidates and built-in candidates, are
   //   constructed as follows:
+
   QualType T1 = Args[0]->getType();
+  if (getLangOpts().CPlusPlusCLI && T1->isHandleType()) {
+    T1 = T1->getPointeeType();
+  }
 
   //     -- If T1 is a complete class type or a class currently being
   //        defined, the set of member candidates is the result of the
@@ -7953,6 +8160,7 @@ void Sema::AddBuiltinOperatorCandidates(OverloadedOperatorKind Op,
   case OO_Delete:
   case OO_Array_New:
   case OO_Array_Delete:
+  case OO_GC_New:
   case OO_Call:
     llvm_unreachable(
                     "Special operators don't use AddBuiltinOperatorCandidates");
@@ -8130,6 +8338,26 @@ Sema::AddArgumentDependentLookupCandidates(DeclarationName Name,
   }
 }
 
+static bool isCLIInterfaceMethod(FunctionDecl* Fn) {
+  clang::CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+  if (!MD)
+    return false;
+  clang::CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(MD->getParent());
+  if (!RD || !RD->isCLIRecord())
+    return false;
+  return RD->getCLIData()->Type == CLI_RT_InterfaceType;
+}
+
+static bool isCLIGenericMethod(FunctionDecl* Fn) {
+  clang::CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+  if (!MD)
+    return false;
+  clang::CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(MD->getParent());
+  if (!RD || !RD->isCLIRecord())
+    return false;
+  return RD->getCLIData()->getGenericData() != 0;
+}
+
 /// isBetterOverloadCandidate - Determines whether the first overload
 /// candidate is a better candidate than the second (C++ 13.3.3p1).
 bool
@@ -8179,6 +8407,36 @@ isBetterOverloadCandidate(Sema &S,
       // Do nothing.
       break;
     }
+  }
+
+  if (S.getLangOpts().CPlusPlusCLI) {
+    // FIXME: Do the conversion comparison on the parameters
+    QualType CLIParamsType;
+    bool HasCLIParams1 = HasCLIParamArrayAttribute(S, Cand1.Function,
+      CLIParamsType);
+    bool HasCLIParams2 = HasCLIParamArrayAttribute(S, Cand2.Function,
+      CLIParamsType);
+
+    if (HasCLIParams2 && !HasCLIParams1)
+      HasBetterConversion = true;
+    else if (HasCLIParams1 && !HasCLIParams2)
+      return false;
+
+    // Generic methods have priority.
+    bool IsGeneric1 =  isCLIGenericMethod(Cand1.Function);
+    bool IsGeneric2 =  isCLIGenericMethod(Cand2.Function);
+    if (IsGeneric2 && !IsGeneric1)
+      HasBetterConversion = true;
+    else if (IsGeneric1 && !IsGeneric2)
+      return false;
+
+    // Non-interface methods have priority.
+    bool IsInterface1 =  isCLIInterfaceMethod(Cand1.Function);
+    bool IsInterface2 =  isCLIInterfaceMethod(Cand2.Function);
+    if (IsInterface2 && !IsInterface1)
+      HasBetterConversion = true;
+    else if (IsInterface1 && !IsInterface2)
+      return false;
   }
 
   //    -- for some argument j, ICSj(F1) is a better conversion sequence than
@@ -8422,6 +8680,10 @@ void Sema::NoteOverloadCandidate(FunctionDecl *Fn, QualType DestType) {
   HandleFunctionTypeMismatch(PD, Fn->getType(), DestType);
   Diag(Fn->getLocation(), PD);
   MaybeEmitInheritedConstructorNote(*this, Fn);
+  if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn)) {
+    if (CLIMethodData *Data = MD->getCLIData())
+      puts(Data->FullName.c_str());
+  }
 }
 
 // Notes the location of all overload candidates designated through

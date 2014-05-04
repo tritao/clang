@@ -739,6 +739,8 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     switch (Chunk.Kind) {
     case DeclaratorChunk::Pointer:
     case DeclaratorChunk::Reference:
+    case DeclaratorChunk::Handle:
+    case DeclaratorChunk::TrackingReference:
     case DeclaratorChunk::Paren:
       // These declarator chunks cannot contain any parameter packs.
       break;

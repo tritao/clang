@@ -1600,7 +1600,8 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
   case Type::LValueReference:
-  case Type::RValueReference: {
+  case Type::RValueReference:
+  case Type::TrackingReference: {
     // alignof and sizeof should never enter this code path here, so we go
     // the pointer route.
     unsigned AS = getTargetAddressSpace(
@@ -1611,6 +1612,12 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   }
   case Type::Pointer: {
     unsigned AS = getTargetAddressSpace(cast<PointerType>(T)->getPointeeType());
+    Width = Target->getPointerWidth(AS);
+    Align = Target->getPointerAlign(AS);
+    break;
+  }
+  case Type::Handle: {
+    unsigned AS = getTargetAddressSpace(cast<HandleType>(T)->getPointeeType());
     Width = Target->getPointerWidth(AS);
     Align = Target->getPointerAlign(AS);
     break;
@@ -1641,6 +1648,8 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = toBits(Layout.getAlignment());
     break;
   }
+  case Type::CLIArray:
+    return getTypeInfo(cast<CLIArrayType>(T)->getElementType().getTypePtr());
   case Type::Record:
   case Type::Enum: {
     const TagType *TT = cast<TagType>(T);
@@ -2260,6 +2269,62 @@ QualType ASTContext::getBlockPointerType(QualType T) const {
   return QualType(New, 0);
 }
 
+/// getHandleType - Return the uniqued reference to the type for an handle to
+/// the specified type.
+QualType ASTContext::getHandleType(QualType T) const {
+  // Unique pointers, to guarantee there is only one pointer of a particular
+  // structure.
+  llvm::FoldingSetNodeID ID;
+  HandleType::Profile(ID, T);
+
+  void *InsertPos = 0;
+  if (HandleType *PT = HandleTypes.FindNodeOrInsertPos(ID, InsertPos))
+    return QualType(PT, 0);
+
+  // If the pointee type isn't canonical, this won't be a canonical type either,
+  // so fill in the canonical type field.
+  QualType Canonical;
+  if (!T.isCanonical()) {
+    Canonical = getHandleType(getCanonicalType(T));
+
+    // Get the new insert position for the node we care about.
+    HandleType *NewIP = HandleTypes.FindNodeOrInsertPos(ID, InsertPos);
+    assert(NewIP == 0 && "Shouldn't be in the map!"); (void)NewIP;
+  }
+  HandleType *New = new (*this, TypeAlignment) HandleType(T, Canonical);
+  Types.push_back(New);
+  HandleTypes.InsertNode(New, InsertPos);
+  return QualType(New, 0);
+}
+
+/// getTrackingReferenceType - Return the uniqued reference to the type for an TrackingReference to
+/// the specified type.
+QualType ASTContext::getTrackingReferenceType(QualType T) const {
+    // Unique pointers, to guarantee there is only one pointer of a particular
+  // structure.
+  llvm::FoldingSetNodeID ID;
+ // TrackingReferenceType::Profile(ID, T);
+
+  void *InsertPos = 0;
+  if (TrackingReferenceType *PT = TrackingReferenceTypes.FindNodeOrInsertPos(ID, InsertPos))
+    return QualType(PT, 0);
+
+  // If the pointee type isn't canonical, this won't be a canonical type either,
+  // so fill in the canonical type field.
+  QualType Canonical;
+  if (!T.isCanonical()) {
+    Canonical = getPointerType(getCanonicalType(T));
+
+    // Get the new insert position for the node we care about.
+    TrackingReferenceType *NewIP = TrackingReferenceTypes.FindNodeOrInsertPos(ID, InsertPos);
+    assert(NewIP == 0 && "Shouldn't be in the map!"); (void)NewIP;
+  }
+  TrackingReferenceType *New = new (*this, TypeAlignment) TrackingReferenceType(T, Canonical);
+  Types.push_back(New);
+  TrackingReferenceTypes.InsertNode(New, InsertPos);
+  return QualType(New, 0);
+ }
+ 
 /// getLValueReferenceType - Return the uniqued reference to the type for an
 /// lvalue reference to the specified type.
 QualType
@@ -2455,6 +2520,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::SubstTemplateTypeParmPack:
   case Type::Auto:
   case Type::PackExpansion:
+  case Type::CLIArray:
     llvm_unreachable("type should never be variably-modified");
 
   // These types can be variably-modified but should never need to
@@ -2473,6 +2539,17 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
     result = getPointerType(getVariableArrayDecayedType(
                               cast<PointerType>(ty)->getPointeeType()));
     break;
+  case Type::Handle:
+    result = getHandleType(getVariableArrayDecayedType(
+                              cast<HandleType>(ty)->getPointeeType()));
+    break;
+
+  case Type::TrackingReference: {
+    const TrackingReferenceType *tr = cast<TrackingReferenceType>(ty);
+    result = getTrackingReferenceType(getVariableArrayDecayedType(
+                                    tr->getPointeeType()));
+    break;
+  }
 
   case Type::LValueReference: {
     const LValueReferenceType *lv = cast<LValueReferenceType>(ty);
@@ -3641,6 +3718,16 @@ QualType ASTContext::getObjCInterfaceType(const ObjCInterfaceDecl *Decl,
   return QualType(T, 0);
 }
 
+/// Return a C++/CLI managed array type.
+QualType ASTContext::getCLIArrayType(QualType ElementType,
+                                     unsigned Dimensions,
+                                     const RecordDecl *Decl) const {
+  void *Mem = Allocate(sizeof(CLIArrayType), TypeAlignment);
+  CLIArrayType *T = new (Mem) CLIArrayType(ElementType, Dimensions, Decl);
+  Types.push_back(T);
+  return QualType(T, 0);
+}
+
 /// getTypeOfExprType - Unlike many "get<Type>" functions, we can't unique
 /// TypeOfExprType AST's (since expression's are never shared). For example,
 /// multiple declarations that refer to "typeof(x)" all contain different
@@ -3986,6 +4073,16 @@ bool ASTContext::UnwrapSimilarPointerTypes(QualType &T1, QualType &T2) {
     }
   }
   
+  if (getLangOpts().CPlusPlusCLI) {
+    const HandleType *T1HType = T1->getAs<HandleType>(),
+                     *T2HType = T2->getAs<HandleType>();
+    if (T1HType && T2HType) {
+      T1 = T1HType->getPointeeType();
+      T2 = T2HType->getPointeeType();
+      return true;
+    }
+  }
+
   // FIXME: Block pointers, too?
   
   return false;
@@ -7186,6 +7283,8 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::LValueReference:
   case Type::RValueReference:
   case Type::MemberPointer:
+  case Type::Handle:
+  case Type::TrackingReference:
     llvm_unreachable("C++ should never be in mergeTypes");
 
   case Type::ObjCInterface:
@@ -7298,6 +7397,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   }
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
+  case Type::CLIArray:
   case Type::Record:
   case Type::Enum:
     return QualType();

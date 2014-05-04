@@ -259,6 +259,8 @@ public:
   TypeSourceInfo *getTypeSourceInfo() const { return BaseTypeInfo; }
 };
 
+class CLIDefinitionData;
+
 /// \brief Represents a C++ struct/union/class.
 ///
 /// FIXME: This class will disappear once we've properly taught RecordDecl
@@ -601,6 +603,9 @@ class CXXRecordDecl : public RecordDecl {
 
   friend class ASTNodeImporter;
 
+  /// \brief C++/CLI-specific definition data.
+  CLIDefinitionData *CLIData;
+
   /// \brief Get the head of our list of friend declarations, possibly
   /// deserializing the friends from an external AST source.
   FriendDecl *getFirstFriend() const;
@@ -611,6 +616,10 @@ protected:
                 IdentifierInfo *Id, CXXRecordDecl *PrevDecl);
 
 public:
+  CLIDefinitionData *getCLIData() const;
+  void setCLIData(CLIDefinitionData *);
+  bool isCLIRecord() const;
+  
   /// \brief Iterator that traverses the base classes of a class.
   typedef CXXBaseSpecifier*       base_class_iterator;
 
@@ -1649,6 +1658,8 @@ public:
   friend class ASTWriter;
 };
 
+class CLIMethodData;
+
 /// \brief Represents a static or instance method of a struct/union/class.
 ///
 /// In the terminology of the C++ Standard, these are the (static and
@@ -1662,10 +1673,13 @@ protected:
                 StorageClass SC, bool isInline,
                 bool isConstexpr, SourceLocation EndLocation)
     : FunctionDecl(DK, RD, StartLoc, NameInfo, T, TInfo,
-                   SC, isInline, isConstexpr) {
+                   SC, isInline, isConstexpr), CLIData(0) {
     if (EndLocation.isValid())
       setRangeEnd(EndLocation);
   }
+
+  /// \brief C++/CLI-specific definition data.
+  CLIMethodData *CLIData;
 
 public:
   static CXXMethodDecl *Create(ASTContext &C, CXXRecordDecl *RD,
@@ -1678,6 +1692,10 @@ public:
                                SourceLocation EndLocation);
 
   static CXXMethodDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+
+  CLIMethodData *getCLIData() const { return CLIData; }
+  void setCLIData(CLIMethodData *Data) { CLIData = Data; }
+  bool isCLIMethod() const { return CLIData != 0; }
 
   bool isStatic() const;
   bool isInstance() const { return !isStatic(); }

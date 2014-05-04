@@ -343,7 +343,8 @@ PTHEntry PTHWriter::LexTokens(Lexer& L) {
 
       case tok::pp_include:
       case tok::pp_import:
-      case tok::pp_include_next: {
+      case tok::pp_include_next:
+	  case tok::pp_using: {
         // Save the 'include' token.
         EmitToken(Tok);
         // Lex the next token as an include string.

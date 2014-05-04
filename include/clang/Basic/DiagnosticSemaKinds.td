@@ -6777,6 +6777,12 @@ def err_unknown_any_function : Error<
 def err_filter_expression_integral : Error<
   "filter expression type should be an integral value not %0">;
 
+// C++/CLI warnings and errors
+def err_handles_disable : Error<"handle type support disabled,"
+  "enable C++/CLI mode">;
+def err_trackrefs_disable : Error<"tracking references type support"
+  " disabled, enable C++/CLI mode">;
+
 // OpenCL warnings and errors.
 def err_invalid_astype_of_different_size : Error<
   "invalid reinterpretation: sizes of %0 and %1 must match">;

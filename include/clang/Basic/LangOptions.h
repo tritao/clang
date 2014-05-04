@@ -41,6 +41,10 @@ public:
 #define ENUM_LANGOPT(Name, Type, Bits, Default, Description)
 #include "clang/Basic/LangOptions.def"
 
+bool isCPlusPlusCXorCLI() const {
+  return CPlusPlusCX || CPlusPlusCLI;
+}
+
   SanitizerOptions Sanitize;
 protected:
   // Define language options of enumeration type. These are private, and will

@@ -1086,6 +1086,9 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
 ///       class-specifier: [C++ class]
 ///         class-head '{' member-specification[opt] '}'
 ///         class-head '{' member-specification[opt] '}' attributes[opt]
+/// [CLI/CX]
+///         attributes[opt] top-level-visibility[opt] class-head
+///                          '{' member-specification[opt] '}'
 ///       class-head:
 ///         class-key identifier[opt] base-clause[opt]
 ///         class-key nested-name-specifier identifier base-clause[opt]
@@ -1096,15 +1099,38 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
 ///                          identifier base-clause[opt]
 /// [GNU]   class-key attributes[opt] nested-name-specifier[opt]
 ///                          simple-template-id base-clause[opt]
+/// [CLI/CX] 
+///         class-key identifier[opt] class-modifiers[opt] base-clause[opt]
+///         class-key nested-name-specifier identifier class-modifiers[opt]
+///                          base-clause[opt]
+///         class-key nested-name-specifier[opt] simple-template-id
+///                          class-modifiers[opt] base-clause[opt]
+///
 ///       class-key:
 ///         'class'
 ///         'struct'
 ///         'union'
+/// [CLI/CX] 
+///         'ref class'
+///         'ref struct'
+///         'value class'
+///         'value struct'
+///         'interface class'
+///         'interface struct'
 ///
 ///       elaborated-type-specifier: [C++ dcl.type.elab]
 ///         class-key ::[opt] nested-name-specifier[opt] identifier
 ///         class-key ::[opt] nested-name-specifier[opt] 'template'[opt]
 ///                          simple-template-id
+/// [CLI/CX]
+///       top-level-visibility:
+///         'public'
+///         'private'
+///
+/// [CLI/CX]
+///       class-modifier:
+///         'abstract'
+///         'sealed'
 ///
 ///  Note that the C++ class-specifier and elaborated-type-specifier,
 ///  together, subsume the C99 struct-or-union-specifier:
@@ -1118,28 +1144,71 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
 ///       struct-or-union:
 ///         'struct'
 ///         'union'
-void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
+
+static DeclSpec::TST ConvertTokenToCXXTagTypeSpecifier(tok::TokenKind Kind) {
+  DeclSpec::TST Result = TST_error;
+  switch(Kind) {
+    default: break;
+    case tok::kw_struct: Result = TST_struct; break;
+    case tok::kw_class:  Result = TST_class; break;
+    case tok::kw_union:  Result = TST_union; break;
+    case tok::kw___interface:  Result = TST_interface; break;
+  }
+  return Result;
+}
+
+DeclSpec::TST Parser::ConvertTokenToTagTypeSpecifier() const {
+  DeclSpec::TST Result = ConvertTokenToCXXTagTypeSpecifier(Tok.getKind());
+
+  if (!getLangOpts().isCPlusPlusCXorCLI() || (Result != TST_error))
+    return Result;
+
+  switch(Tok.getKind()) {
+    default: break;
+    case tok::kw_ref_class:        Result = TST_ref_class; break;
+    case tok::kw_ref_struct:       Result = TST_ref_struct; break;
+    case tok::kw_value_class:      Result = TST_value_class; break;
+    case tok::kw_value_struct:     Result = TST_value_struct; break;
+    case tok::kw_interface_class:  Result = TST_interface_class; break;
+    case tok::kw_interface_struct: Result = TST_interface_struct; break;
+  }
+  return Result;
+}
+bool Parser::ParseClassSpecifier(tok::TokenKind TokenToAssume,
                                  SourceLocation StartLoc, DeclSpec &DS,
                                  const ParsedTemplateInfo &TemplateInfo,
                                  AccessSpecifier AS, 
                                  bool EnteringContext, DeclSpecContext DSC, 
                                  ParsedAttributesWithRange &Attributes) {
-  DeclSpec::TST TagType;
-  if (TagTokKind == tok::kw_struct)
-    TagType = DeclSpec::TST_struct;
-  else if (TagTokKind == tok::kw___interface)
-    TagType = DeclSpec::TST_interface;
-  else if (TagTokKind == tok::kw_class)
-    TagType = DeclSpec::TST_class;
-  else {
-    assert(TagTokKind == tok::kw_union && "Not a class specifier");
-    TagType = DeclSpec::TST_union;
+  DeclSpec::TST TagType = TST_error;
+ 
+  AccessSpecifier Visibility = AS_private; // default
+  SourceLocation VisibilityLoc;
+
+  // If TokenToAssume is not unknown, then the caller already provides us with
+  // the token to convert. This happens when recovering from missing TSTs.
+  if (TokenToAssume != tok::unknown) {
+    TagType = ConvertTokenToCXXTagTypeSpecifier(TokenToAssume);
+    goto SkipClassKeyParsing;
   }
+
+  if (getLangOpts().isCPlusPlusCXorCLI())
+    ParseTagVisibility(Visibility, VisibilityLoc);
+
+  if ((TagType = ConvertTokenToTagTypeSpecifier()) != TST_error)
+    ConsumeToken();
+
+SkipClassKeyParsing:
+
+  // If we get an error, then we return early.
+  if (TagType == TST_error)
+    return false;
 
   if (Tok.is(tok::code_completion)) {
     // Code completion for a struct, class, or union name.
     Actions.CodeCompleteTag(getCurScope(), TagType);
-    return cutOffParsing();
+	cutOffParsing();
+    return true;
   }
 
   // C++03 [temp.explicit] 14.7.2/8:
@@ -1231,7 +1300,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
 
       Diag(NameLoc, diag::err_explicit_spec_non_template)
           << (TemplateInfo.Kind == ParsedTemplateInfo::ExplicitInstantiation)
-          << TagTokKind << Name << SourceRange(LAngleLoc, RAngleLoc);
+          << TokenToAssume << Name << SourceRange(LAngleLoc, RAngleLoc);
 
       // Strip off the last template parameter list if it was empty, since
       // we've removed its template argument list.
@@ -1274,7 +1343,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
 
       DS.SetTypeSpecError();
       SkipUntil(tok::semi, StopBeforeMatch);
-      return;
+      return false;
     }
   }
 
@@ -1419,7 +1488,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
       SkipUntil(tok::semi, StopBeforeMatch);
     else
       SkipUntil(tok::comma, StopAtSemi);
-    return;
+    return false;
   }
 
   // Create the tag portion of the class or class template.
@@ -1614,7 +1683,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
                                 Policy);
   } else {
     DS.SetTypeSpecError();
-    return;
+    return false;
   }
 
   if (Result)
@@ -1642,6 +1711,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
       Tok.setKind(tok::semi);
     }
   }
+  return true;
 }
 
 /// ParseBaseClause - Parse the base-clause of a C++ class [C++ class.derived].
@@ -1706,8 +1776,6 @@ Parser::BaseResult Parser::ParseBaseSpecifier(Decl *ClassDecl) {
 
   // Parse an (optional) access specifier.
   AccessSpecifier Access = getAccessSpecifierIfPresent();
-  if (Access != AS_none)
-    ConsumeToken();
 
   CheckMisplacedCXX11Attribute(Attributes, StartLoc);
 
@@ -1749,6 +1817,22 @@ Parser::BaseResult Parser::ParseBaseSpecifier(Decl *ClassDecl) {
                                     EllipsisLoc);
 }
 
+/// GetAccessSpecifierFromToken - Converts from a token to an
+/// access specifier enum.
+AccessSpecifier Parser::ConvertTokenToAccessSpecifier(bool AllowCLIExt) const {
+  switch (Tok.getKind()) {
+  default: return AS_none;
+  case tok::kw_private: return AS_private;
+  case tok::kw_protected: return AS_protected;
+  case tok::kw_public: return AS_public;
+  case tok::identifier:
+    if (AllowCLIExt && getLangOpts().CPlusPlusCLI &&
+        Tok.getIdentifierInfo() == CLIContextKeywords[cli_internal])
+      return AS_internal;
+  }
+  return AS_none;
+}
+
 /// getAccessSpecifierIfPresent - Determine whether the next token is
 /// a C++ access-specifier.
 ///
@@ -1756,13 +1840,42 @@ Parser::BaseResult Parser::ParseBaseSpecifier(Decl *ClassDecl) {
 ///         'private'
 ///         'protected'
 ///         'public'
-AccessSpecifier Parser::getAccessSpecifierIfPresent() const {
-  switch (Tok.getKind()) {
-  default: return AS_none;
-  case tok::kw_private: return AS_private;
-  case tok::kw_protected: return AS_protected;
-  case tok::kw_public: return AS_public;
+/// [C++CLI] 'internal'
+///          'protected public'
+///          'public protected'
+///          'private protected'
+///          'protected private'
+AccessSpecifier Parser::getAccessSpecifierIfPresent() {
+  AccessSpecifier AS = ConvertTokenToAccessSpecifier();
+  
+  if (AS != AS_none)
+    ConsumeToken();
+    
+  if (!getLangOpts().CPlusPlusCLI)
+    return AS;
+
+  AccessSpecifier NextAS = ConvertTokenToAccessSpecifier();
+
+  if (NextAS == AS_none)
+      return AS;
+
+  ConsumeToken();
+  
+  switch (NextAS) {
+  case AS_private:
+    if (AS == AS_protected) return AS_protected_private;
+  case AS_protected:
+    if (AS == AS_public) return AS_protected_public;
+    if (AS == AS_private) return AS_protected_private;
+  case AS_public:
+    if (AS == AS_protected) return AS_protected_public;
+  default: break;
   }
+
+  Diag(diag::err_cli_invalid_access_specifiers)
+   << GetAccessSpecifierName(AS) << GetAccessSpecifierName(NextAS);
+
+  return AS_none;
 }
 
 /// \brief If the given declarator has any parts for which parsing has to be
@@ -1841,9 +1954,25 @@ VirtSpecifiers::Specifier Parser::isCXX11VirtSpecifier(const Token &Tok) const {
 void Parser::ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS,
                                                 bool IsInterface) {
   while (true) {
-    VirtSpecifiers::Specifier Specifier = isCXX11VirtSpecifier();
+    VirtSpecifiers::Specifier CXXSpecifier = isCXX11VirtSpecifier();
+    VirtSpecifiers::Specifier ExtraSpecifier = VirtSpecifiers::VS_None;
+        
+    if (getLangOpts().isCPlusPlusCXorCLI())
+        ExtraSpecifier = isCLIVirtSpecifier(Tok);
+    
+    if (CXXSpecifier == VirtSpecifiers::VS_None
+        && ExtraSpecifier == VirtSpecifiers::VS_None)
+        return;
+
+    VirtSpecifiers::Specifier Specifier = CXXSpecifier;
+
     if (Specifier == VirtSpecifiers::VS_None)
-      return;
+        Specifier = ExtraSpecifier;
+
+    if (!getLangOpts().isCPlusPlusCXorCLI()
+        && ExtraSpecifier != VirtSpecifiers::VS_None)
+        Diag(Tok.getLocation(), diag::ext_cli_member_keyword)
+          << VirtSpecifiers::getSpecifierName(ExtraSpecifier);
 
     // C++ [class.mem]p8:
     //   A virt-specifier-seq shall contain at most one of each virt-specifier.
@@ -1857,9 +1986,11 @@ void Parser::ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS,
                         Specifier == VirtSpecifiers::VS_Sealed)) {
       Diag(Tok.getLocation(), diag::err_override_control_interface)
         << VirtSpecifiers::getSpecifierName(Specifier);
-    } else if (Specifier == VirtSpecifiers::VS_Sealed) {
+    } else 
+		if (CXXSpecifier == VirtSpecifiers::VS_Sealed) {
       Diag(Tok.getLocation(), diag::ext_ms_sealed_keyword);
-    } else {
+    } else 
+	if (CXXSpecifier != VirtSpecifiers::VS_None) {
       Diag(Tok.getLocation(),
            getLangOpts().CPlusPlus11
                ? diag::warn_cxx98_compat_override_control_keyword
@@ -1936,6 +2067,17 @@ void Parser::ParseCXXMemberDeclaratorBeforeInitializer(
 ///         template-declaration
 /// [GNU]   '__extension__' member-declaration
 ///
+/// [C++CLI] attributes[opt] initonly-or-literal[opt] decl-specifier-seq[opt]
+///            member-declarator-list[opt] ';'
+///          generic-declaration 
+///          delegate-specifier 
+///          event-definition 
+///          property-definition 
+///
+/// [C++CLI] initonly-or-literal:
+///           'initonly'
+///           'literal'
+///
 ///       member-declarator-list:
 ///         member-declarator
 ///         member-declarator-list ',' member-declarator
@@ -1953,6 +2095,8 @@ void Parser::ParseCXXMemberDeclaratorBeforeInitializer(
 ///       virt-specifier:
 ///         override
 ///         final
+/// [CX]    abstract
+/// [CX]    new
 /// [MS]    sealed
 /// 
 ///       pure-specifier:
@@ -2461,11 +2605,12 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
                                          SourceLocation AttrFixitLoc,
                                          ParsedAttributesWithRange &Attrs,
                                          unsigned TagType, Decl *TagDecl) {
+#if 0
   assert((TagType == DeclSpec::TST_struct ||
          TagType == DeclSpec::TST_interface ||
          TagType == DeclSpec::TST_union  ||
          TagType == DeclSpec::TST_class) && "Invalid TagType!");
-
+#endif
   PrettyDeclStackTraceEntry CrashInfo(Actions, TagDecl, RecordLoc,
                                       "parsing struct/union/class body");
 
@@ -2627,7 +2772,7 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
         CurAS = AS;
         SourceLocation ASLoc = Tok.getLocation();
         unsigned TokLength = Tok.getLength();
-        ConsumeToken();
+        //ConsumeToken();
         AccessAttrs.clear();
         MaybeParseGNUAttributes(AccessAttrs);
 
@@ -3357,7 +3502,10 @@ void Parser::ParseMicrosoftAttributes(ParsedAttributes &attrs,
   while (Tok.is(tok::l_square)) {
     // FIXME: If this is actually a C++11 attribute, parse it as one.
     ConsumeBracket();
-    SkipUntil(tok::r_square, StopAtSemi | StopBeforeMatch);
+    if (getLangOpts().isCPlusPlusCXorCLI())
+      ParseCLIAttribute(attrs);
+    else
+      SkipUntil(tok::r_square, StopAtSemi | StopBeforeMatch);
     if (endLoc) *endLoc = Tok.getLocation();
     ExpectAndConsume(tok::r_square);
   }
@@ -3408,7 +3556,7 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
       // Current token is a C++ access specifier.
       CurAS = AS;
       SourceLocation ASLoc = Tok.getLocation();
-      ConsumeToken();
+      //ConsumeToken();
       if (Tok.is(tok::colon))
         Actions.ActOnAccessSpecifier(AS, ASLoc, Tok.getLocation());
       else

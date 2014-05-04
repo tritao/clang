@@ -1067,6 +1067,14 @@ static TryCastResult TryStaticCast(Sema &Self, ExprResult &SrcExpr,
     Kind = CK_BitCast;
     return TC_Success;
   }
+
+  // Allow arbitrary C++/CLI handle conversion with static casts.
+  if (Self.getLangOpts().CPlusPlusCLI) {
+    if (SrcType->isHandleType() && DestType->isHandleType()) {
+      Kind = CK_BitCast;
+      return TC_Success;
+    }
+  }
   
   // We tried everything. Everything! Nothing works! :-(
   return TC_NotApplicable;
@@ -1741,6 +1749,7 @@ static TryCastResult TryReinterpretCast(Sema &Self, ExprResult &SrcExpr,
       break;
     case OK_BitField:        inappropriate = "bit-field";           break;
     case OK_VectorComponent: inappropriate = "vector element";      break;
+	case OK_CLIProperty:     inappropriate = "property expression"; break;
     case OK_ObjCProperty:    inappropriate = "property expression"; break;
     case OK_ObjCSubscript:   inappropriate = "container subscripting expression"; 
                              break;
