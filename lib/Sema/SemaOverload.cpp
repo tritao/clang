@@ -8482,24 +8482,37 @@ isBetterOverloadCandidate(Sema &S,
     }
   }
 
-  if (S.getLangOpts().CPlusPlusCLI) {
-    // FIXME: Do the conversion comparison on the parameters
-    QualType CLIParamsType;
-    bool HasCLIParams1 = HasCLIParamArrayAttribute(S, Cand1.Function,
-      CLIParamsType);
-    bool HasCLIParams2 = HasCLIParamArrayAttribute(S, Cand2.Function,
-      CLIParamsType);
+  //    -- for some argument j, ICSj(F1) is a better conversion sequence than
+  //       ICSj(F2), or, if not that,
+  if (HasBetterConversion)
+    return true;
 
-    if (HasCLIParams2 && !HasCLIParams1)
-      HasBetterConversion = true;
-    else if (HasCLIParams1 && !HasCLIParams2)
-      return false;
+  if (S.getLangOpts().CPlusPlusCLI) {
+    // C++/CLI 14.6 Parameter array conversions
+    // "The synthesized overloads have higher cost than other non-
+    // synthesized overloads, and they have lower cost than functions
+    // whose parameter-declaration-clause terminates with an ellipsis.
+
+    bool IsCLIParams1 = isCLIParameterArrayOverload(Cand1.Function);
+    bool IsCLIParams2 = isCLIParameterArrayOverload(Cand2.Function);
+
+    bool IsCLIVariadic1 = Cand1.Function->isVariadic();
+    bool IsCLIVariadic2 = Cand2.Function->isVariadic();
+
+    assert(!(IsCLIParams1 && IsCLIVariadic1));
+    assert(!(IsCLIParams2 && IsCLIVariadic2));
+
+    int Rank1 = IsCLIVariadic1 ? 2 : IsCLIParams1 ? 1 : 0;
+    int Rank2 = IsCLIVariadic2 ? 2 : IsCLIParams2 ? 1 : 0;
+
+    if (Rank1 != Rank2)
+        return Rank2 > Rank1;
 
     // Generic methods have priority.
     bool IsGeneric1 =  isCLIGenericMethod(Cand1.Function);
     bool IsGeneric2 =  isCLIGenericMethod(Cand2.Function);
     if (IsGeneric2 && !IsGeneric1)
-      HasBetterConversion = true;
+      return true;
     else if (IsGeneric1 && !IsGeneric2)
       return false;
 
@@ -8507,15 +8520,10 @@ isBetterOverloadCandidate(Sema &S,
     bool IsInterface1 =  isCLIInterfaceMethod(Cand1.Function);
     bool IsInterface2 =  isCLIInterfaceMethod(Cand2.Function);
     if (IsInterface2 && !IsInterface1)
-      HasBetterConversion = true;
+      return true;
     else if (IsInterface1 && !IsInterface2)
       return false;
   }
-
-  //    -- for some argument j, ICSj(F1) is a better conversion sequence than
-  //       ICSj(F2), or, if not that,
-  if (HasBetterConversion)
-    return true;
 
   //     - F1 is a non-template function and F2 is a function template
   //       specialization, or, if not that,
