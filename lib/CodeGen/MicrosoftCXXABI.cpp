@@ -429,6 +429,11 @@ MicrosoftCXXABI::GetVirtualBaseClassOffset(CodeGenFunction &CGF,
 }
 
 bool MicrosoftCXXABI::HasThisReturn(GlobalDecl GD) const {
+  auto FD = GD.getDecl()->getAsFunction();
+  if (auto RD = dyn_cast<CXXRecordDecl>(FD->getParent()))
+    if (auto CLIData = RD->isCLIRecord())
+      return false;
+
   return isa<CXXConstructorDecl>(GD.getDecl());
 }
 

@@ -1672,6 +1672,8 @@ CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
                                         llvm::Value *This,
                                         CallExpr::const_arg_iterator ArgBeg,
                                         CallExpr::const_arg_iterator ArgEnd) {
+  if (!D->isCLIMethod()) {
+
   // If this is a trivial constructor, just emit what's needed.
   if (D->isTrivial()) {
     if (ArgBeg == ArgEnd) {
@@ -1699,10 +1701,16 @@ CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
   EmitTypeCheck(CodeGenFunction::TCK_ConstructorCall, SourceLocation(), This,
                 getContext().getRecordType(D->getParent()));
 
+  }
+
   CallArgList Args;
+
+  if (!D->isCLIMethod()) {
 
   // Push the this ptr.
   Args.add(RValue::get(This), D->getThisType(getContext()));
+
+  }
 
   // Add the rest of the user-supplied arguments.
   const FunctionProtoType *FPT = D->getType()->castAs<FunctionProtoType>();

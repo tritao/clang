@@ -216,11 +216,6 @@ CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
                                                CXXCtorType ctorKind) {
   SmallVector<CanQualType, 16> argTypes;
 
-  CLIDefinitionData *CLIData = D->getParent()->getCLIData();
-
-  if (!CLIData || CLIData->Type == CLI_RT_ValueType)
-    argTypes.push_back(GetThisType(Context, D->getParent()));
-
   GlobalDecl GD(D, ctorKind);
   CanQualType resultType =
     TheCXXABI.HasThisReturn(GD) ? argTypes.front() : Context.VoidTy;
@@ -231,8 +226,9 @@ CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
   for (unsigned i = 0, e = FTP->getNumParams(); i != e; ++i)
     argTypes.push_back(FTP->getParamType(i));
 
- if (!CLIData)
-  TheCXXABI.BuildConstructorSignature(D, ctorKind, resultType, argTypes);
+  bool isCLIRecord = D->getParent()->isCLIRecord();
+  if (!isCLIRecord)
+    TheCXXABI.BuildConstructorSignature(D, ctorKind, resultType, argTypes);
 
   RequiredArgs required =
       (D->isVariadic() ? RequiredArgs(argTypes.size()) : RequiredArgs::All);
@@ -241,9 +237,13 @@ CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
   
   const CGFunctionInfo &CGInfo = arrangeLLVMFunctionInfo(resultType, true, argTypes, extInfo, required);
 
-  if (CLIData) {
-    const_cast<CGFunctionInfo &>(CGInfo).setEffectiveCallingConvention(
-      llvm::CallingConv::CIL_NewObj);
+  if (isCLIRecord) {
+    auto CC = llvm::CallingConv::CIL_NewObj;
+    if (D->getParent()->getCLIData()->Type == CLI_RT_ValueType)
+      // FIXME: This is not enough for value type constructors
+      // (we end up calling this as 'callvirt' in IL, a new intrinsic might be needed)
+      CC = llvm::CallingConv::CIL_Instance;
+    const_cast<CGFunctionInfo &>(CGInfo).setEffectiveCallingConvention(CC);
   }
 
   return CGInfo;
