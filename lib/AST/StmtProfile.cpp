@@ -219,10 +219,6 @@ void StmtProfiler::VisitSEHExceptStmt(const SEHExceptStmt *S) {
   VisitStmt(S);
 }
 
-void StmtProfiler::VisitSEHLeaveStmt(const SEHLeaveStmt *S) {
-  VisitStmt(S);
-}
-
 void StmtProfiler::VisitCapturedStmt(const CapturedStmt *S) {
   VisitStmt(S);
 }

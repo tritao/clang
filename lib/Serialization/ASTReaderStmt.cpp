@@ -2249,9 +2249,6 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case STMT_SEH_TRY:
       S = new (Context) SEHTryStmt(Empty);
       break;
-    case STMT_SEH_LEAVE:
-      S = new (Context) SEHLeaveStmt(Empty);
-      break;
     case STMT_CXX_CATCH:
       S = new (Context) CXXCatchStmt(Empty);
       break;
