@@ -1011,7 +1011,7 @@ static void initializeCLINamespace(Sema &S) {
   Ctx->InteriorPtr = initializeInteriorPtrDecl(S, Namespace);
 
   assert(!Ctx->PinPtr && "Expected unitialized CLI pin_ptr decl");
-  Ctx->InteriorPtr = initializePinPtrDecl(S, Namespace);
+  Ctx->PinPtr = initializePinPtrDecl(S, Namespace);
 
   assert(!Ctx->SafeCast && "Expected unitialized CLI safe_cast decl");
   Ctx->SafeCast = initializeSafeCastDecl(S, Namespace);

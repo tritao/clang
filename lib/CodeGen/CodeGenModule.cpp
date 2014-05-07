@@ -438,6 +438,9 @@ static std::string getCLIRecordFullName(const CXXRecordDecl *RD) {
 }
 
 std::string CodeGenModule::getCLIRecordIRName(const CXXRecordDecl *RD) {
+  
+  assert(RD->isCLIRecord() && "Expected C++/CLI Record type");
+  
   // C++/CLI names are not mangled in the usual sense.
   CLIDefinitionData *Data = RD->getCLIData();
   assert(Data && "Expected valid C++/CLI record data");

@@ -1078,7 +1078,7 @@ typedef SmallVector<Token, 4> CachedTokens;
 struct DeclaratorChunk {
   enum {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
-	Handle, TrackingReference /* C++/CLI */
+    Handle, TrackingReference /* C++/CLI */
   } Kind;
 
   /// Loc - The place where this type was defined.
@@ -1386,8 +1386,8 @@ struct DeclaratorChunk {
     TypeInfoCommon        Common;
     PointerTypeInfo       Ptr;
     ReferenceTypeInfo     Ref;
-	HandleTypeInfo        Han;
-	TrackingReferenceTypeInfo TRef;
+    HandleTypeInfo        Han;
+    TrackingReferenceTypeInfo TRef;
     ArrayTypeInfo         Arr;
     FunctionTypeInfo      Fun;
     BlockPointerTypeInfo  Cls;
@@ -1584,7 +1584,7 @@ public:
     TemplateTypeArgContext, // Template type argument.
     AliasDeclContext,    // C++11 alias-declaration.
     AliasTemplateContext, // C++11 alias-declaration template.
-	CXXCLIGCNewContext   // C++/CLI GC new declaration
+    CXXCLIGCNewContext   // C++/CLI GC new declaration
   };
 
 private:
@@ -1753,7 +1753,7 @@ public:
     case ObjCResultContext:
     case TemplateParamContext:
     case CXXNewContext:
-	case CXXCLIGCNewContext:
+    case CXXCLIGCNewContext:
     case CXXCatchContext:
     case ObjCCatchContext:
     case BlockLiteralContext:
@@ -1786,7 +1786,7 @@ public:
 
     case TypeNameContext:
     case CXXNewContext:
-	case CXXCLIGCNewContext:
+    case CXXCLIGCNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case ObjCParameterContext:
@@ -1822,6 +1822,7 @@ public:
     case ObjCResultContext:
     case BlockLiteralContext:
     case CXXNewContext:
+    case CXXCLIGCNewContext:
     case LambdaExprContext:
       return false;
 
@@ -1873,7 +1874,7 @@ public:
     case ObjCCatchContext:
     case TypeNameContext:
     case CXXNewContext:
-	case CXXCLIGCNewContext:
+    case CXXCLIGCNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case BlockLiteralContext:
@@ -1992,9 +1993,9 @@ public:
       case DeclaratorChunk::Paren:
         continue;
       case DeclaratorChunk::Pointer:
-	  case DeclaratorChunk::Handle:
+      case DeclaratorChunk::Handle:
       case DeclaratorChunk::Reference:
-	  case DeclaratorChunk::TrackingReference:
+      case DeclaratorChunk::TrackingReference:
       case DeclaratorChunk::Array:
       case DeclaratorChunk::BlockPointer:
       case DeclaratorChunk::MemberPointer:
@@ -2060,7 +2061,7 @@ public:
     case ObjCResultContext:
     case TemplateParamContext:
     case CXXNewContext:
-	case CXXCLIGCNewContext:
+    case CXXCLIGCNewContext:
     case CXXCatchContext:
     case ObjCCatchContext:
     case BlockLiteralContext:

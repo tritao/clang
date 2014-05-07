@@ -55,8 +55,10 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
 
   CLIDefinitionData *CLIData = 0;
   if (const CXXRecordDecl *CRD = dyn_cast<CXXRecordDecl>(RD)) {
+    if (CRD->isCLIRecord()) {
     OS << CGM.getCLIRecordIRName(CRD);
     goto PastName;
+    }
   }
 
   OS << RD->getKindName() << '.';
