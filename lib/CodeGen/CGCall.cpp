@@ -215,8 +215,13 @@ const CGFunctionInfo &
 CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
                                                CXXCtorType ctorKind) {
   SmallVector<CanQualType, 16> argTypes;
+  bool isCLIRecord = D->getParent()->isCLIRecord();
+
+  if (!isCLIRecord)
+    argTypes.push_back(GetThisType(Context, D->getParent()));
 
   GlobalDecl GD(D, ctorKind);
+  // HasThisReturn returns false for CLI constructors 
   CanQualType resultType =
     TheCXXABI.HasThisReturn(GD) ? argTypes.front() : Context.VoidTy;
 
@@ -226,7 +231,6 @@ CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
   for (unsigned i = 0, e = FTP->getNumParams(); i != e; ++i)
     argTypes.push_back(FTP->getParamType(i));
 
-  bool isCLIRecord = D->getParent()->isCLIRecord();
   if (!isCLIRecord)
     TheCXXABI.BuildConstructorSignature(D, ctorKind, resultType, argTypes);
 
@@ -264,6 +268,8 @@ CodeGenTypes::arrangeCXXConstructorCall(const CallArgList &args,
   CanQual<FunctionProtoType> FPT = GetFormalType(D);
   RequiredArgs Required = RequiredArgs::forPrototypePlus(FPT, 1 + ExtraArgs);
   GlobalDecl GD(D, CtorKind);
+
+  // HasThisReturn returns false for CLI constructors 
   CanQualType ResultType =
       TheCXXABI.HasThisReturn(GD) ? ArgTypes.front() : Context.VoidTy;
 
