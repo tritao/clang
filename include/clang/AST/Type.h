@@ -4002,7 +4002,20 @@ enum ElaboratedTypeKeyword {
   /// \c typename T::type.
   ETK_Typename,
   /// \brief No keyword precedes the qualified type name.
-  ETK_None
+  ETK_None,
+  /// C++/CLI extensions.
+  /// \brief The "ref class" keywords.
+  ETK_RefClass,
+  /// \brief The "ref struct" keywords.
+  ETK_RefStruct,
+  /// \brief The "value class" keywords.
+  ETK_ValueClass,
+  /// \brief The "value struct" keywords.
+  ETK_ValueStruct,
+  /// \brief The "interface class" keywords.
+  ETK_InterfaceClass,
+  /// \brief The "interface struct" keywords.
+  ETK_InterfaceStruct
 };
 
 /// A helper class for Type nodes having an ElaboratedTypeKeyword.

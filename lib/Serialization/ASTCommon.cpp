@@ -211,6 +211,9 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::Import:
   case Decl::OMPThreadPrivate:
+  // CLI Decls
+  case Decl::CLIProperty:
+  case Decl::CLIEvent:
     return false;
   }
 
