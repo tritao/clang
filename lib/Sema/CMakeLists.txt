@@ -2,7 +2,7 @@ set(LLVM_LINK_COMPONENTS
   Support
   )
 
-add_clang_library(clangSema
+set(SOURCES
   AnalysisBasedWarnings.cpp
   AttributeList.cpp
   CodeCompleteConsumer.cpp
@@ -49,7 +49,11 @@ add_clang_library(clangSema
   SemaTemplateVariadic.cpp
   SemaType.cpp
   TypeLocBuilder.cpp
+  )
 
+add_clang_library(clangSema
+  ${SOURCES}
+  
   LINK_LIBS
   clangAST
   clangAnalysis
@@ -58,5 +62,21 @@ add_clang_library(clangSema
   clangLex
   )
 
-#  set_source_files_properties(SemaCLI.cpp PROPERTIES COMPILE_FLAGS
-#    "/clr /AI \"${CLANG_SOURCE_DIR}/deps/cecil/\" /GR")
+
+# VS flags for CLI compiler,
+if (MSVC)
+  # # remove /RTC1 (runtime checks)
+  set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Zi /Ob0 /Od")
+  set(CMAKE_C_FLAGS_DEBUG "/D_DEBUG /MDd /Zi /Ob0 /Od")
+
+  foreach(f ${SOURCES})
+    if(NOT (${f} STREQUAL "SemaCLI.cpp"))
+      set_source_files_properties(${f} PROPERTIES COMPILE_FLAGS "/RTC1")
+    endif()
+  endforeach(f)
+
+  # add necessary flags to SemaCLI, /CLR, /GR, and Cecil dep
+  set_source_files_properties(SemaCLI.cpp PROPERTIES COMPILE_FLAGS "/clr /AI\"${CLANG_SOURCE_DIR}/deps/cecil/\" /GR")
+
+endif()
+

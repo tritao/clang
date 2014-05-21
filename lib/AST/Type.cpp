@@ -1434,7 +1434,12 @@ TypeWithKeyword::getKeywordForTagTypeKind(TagTypeKind Kind) {
   case TTK_Interface: return ETK_Interface;
   case TTK_Union: return ETK_Union;
   case TTK_Enum: return ETK_Enum;
+  case TTK_RefStruct: return ETK_RefStruct;
   case TTK_RefClass: return ETK_Class;
+  case TTK_InterfaceStruct: return ETK_InterfaceStruct;
+  case TTK_InterfaceClass: return ETK_InterfaceClass;
+  case TTK_ValueStruct: return ETK_ValueStruct;
+  case TTK_ValueClass: return ETK_ValueClass;
   }
   llvm_unreachable("Unknown tag type kind.");
 }
