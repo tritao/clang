@@ -58,4 +58,17 @@ add_clang_library(clangSema
   clangLex
   )
 
-set_source_files_properties(SemaCLI.cpp PROPERTIES COMPILE_FLAGS "/clr /RTC1 /AI\"${CLANG_SOURCE_DIR}/deps/cecil/\" /GR")
+
+# VS flags for CLI compiler,
+if (MSVC)
+	# remove /RTC1 (runtime checks)
+	set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Zi /Ob0 /Od")
+	set(CMAKE_C_FLAGS_DEBUG "/D_DEBUG /MDd /Zi /Ob0 /Od")
+	
+	# add necessary flags, /CLR, /GR, and Cecil dep
+	set_source_files_properties(SemaCLI.cpp PROPERTIES COMPILE_FLAGS "/clr /AI\"${CLANG_SOURCE_DIR}/deps/cecil/\" /GR")
+endif()
+
+set(BATATAATAT "${CMAKE_CURRENT_BINARY_DIR}/LLVMFFFFFsln")
+
+
